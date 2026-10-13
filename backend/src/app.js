@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import 'dotenv/config';
 import pool from './config/db.js';
+import authRoutes from './routes/auth.routes.js';
 
 const app = express();
 
@@ -19,6 +20,8 @@ app.get('/api/health', async (req, res) => {
     res.status(500).json({ kode: 'DB_ERROR', pesan: 'Database tidak dapat dihubungi' });
   }
 });
+
+app.use('/api/auth', authRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ kode: 'TIDAK_DITEMUKAN', pesan: 'Alamat tidak ditemukan' });
