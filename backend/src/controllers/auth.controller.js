@@ -6,12 +6,6 @@ import pool from '../config/db.js';
 export async function login(req, res) {
   const { username, password } = req.body;
 
-  if (!username || !password) {
-    return res
-      .status(400)
-      .json({ kode: 'INPUT_TIDAK_VALID', pesan: 'Username dan password wajib diisi' });
-  }
-
   try {
     const [rows] = await pool.query(
       'SELECT id, nama, username, password_hash, role, aktif FROM pengguna WHERE username = ?',
