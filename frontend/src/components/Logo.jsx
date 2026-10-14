@@ -1,25 +1,21 @@
-// Logo sementara. Kalau logo instansi sudah ada, taruh filenya di
-// src/assets/ lalu ganti isi komponen ini dengan <img src={logo} ... />.
-// Semua halaman memakai komponen ini, jadi cukup diganti di satu tempat.
+// Logo instansi. Semua halaman memakai komponen ini, jadi logo cukup
+// diganti di satu tempat. File gambarnya ada di src/assets/LogoBNN.png.
 import { Box } from '@mui/material';
-import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
+import logoBNN from '../assets/LogoBNN.png';
 
-export default function Logo({ size = 36 }) {
+export default function Logo({ size = 50 }) {
   return (
     <Box
-      aria-hidden
+      component="img"
+      src={logoBNN}
+      alt="Logo BNN"
       sx={{
         width: size,
         height: size,
-        borderRadius: 1.5,
-        bgcolor: 'primary.main',
-        color: 'primary.contrastText',
-        display: 'grid',
-        placeItems: 'center',
+        objectFit: 'contain',
+        display: 'block',
         flexShrink: 0,
       }}
-    >
-      <ShieldOutlinedIcon sx={{ fontSize: size * 0.62 }} />
-    </Box>
+    />
   );
 }
