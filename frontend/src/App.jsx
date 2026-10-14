@@ -8,21 +8,14 @@ import StaffLayout from './components/StaffLayout';
 import ComingSoon from './pages/ComingSoon';
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
+import VisitorForm from './pages/VisitorForm';
 import ProtectedRoute from './routes/ProtectedRoute';
 
 export default function App() {
   return (
     <Routes>
       {/* Publik */}
-      <Route
-        path="/"
-        element={
-          <ComingSoon
-            title="Pendaftaran Pembesuk"
-            description="Form pendaftaran pembesuk akan dikerjakan pada tahap berikutnya."
-          />
-        }
-      />
+           <Route path="/" element={<VisitorForm />} />
       <Route path="/login" element={<Login />} />
 
       {/* Petugas dan admin */}
