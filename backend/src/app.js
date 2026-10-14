@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import 'dotenv/config';
 import pool from './config/db.js';
 import authRoutes from './routes/auth.routes.js';
+import tahananRoutes from './routes/tahanan.routes.js';
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/tahanan', tahananRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ kode: 'TIDAK_DITEMUKAN', pesan: 'Alamat tidak ditemukan' });
