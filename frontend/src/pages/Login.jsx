@@ -78,7 +78,7 @@ export default function Login() {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-           <Logo size={60} />
+           <Logo size={100} />
           <Typography variant="h6" component="p">
             Sistem Manajemen Kunjungan Tahanan
           </Typography>

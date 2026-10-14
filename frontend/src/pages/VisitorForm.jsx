@@ -1,17 +1,11 @@
 // Halaman publik pendaftaran pembesuk (alamat "/").
-// Tahap 1: pop-up peraturan. Formulir data pembesuk ditambahkan di tahap berikutnya.
+// Tahap 1: pop-up peraturan. Tahap 2: formulir data pembesuk dinamis.
 import { useState } from 'react';
-import {
-  Alert,
-  Box,
-  Chip,
-  Container,
-  Paper,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Chip, Container, Typography } from '@mui/material';
 import EventIcon from '@mui/icons-material/Event';
 import Logo from '../components/Logo';
 import RulesDialog from '../components/RulesDialog';
+import VisitorDataForm from '../components/VisitorDataForm';
 
 // Tanggal besuk otomatis hari ini (tidak diisi manual), contoh: "Rabu, 14 Oktober 2026"
 const todayLabel = new Date().toLocaleDateString('id-ID', {
@@ -24,6 +18,19 @@ const todayLabel = new Date().toLocaleDateString('id-ID', {
 export default function VisitorForm() {
   // Waktu pembesuk menyetujui peraturan. null = belum menyetujui.
   const [acceptedAt, setAcceptedAt] = useState(null);
+  // Jumlah pembesuk pada pengiriman terakhir yang lolos validasi.
+  const [validCount, setValidCount] = useState(null);
+
+  const handleSubmit = (values) => {
+    const payload = {
+      waktuSetuju: acceptedAt.toISOString(),
+      pembesuk: values.pembesuk,
+    };
+    // Tahap 2: baru sampai validasi. Pengiriman ke backend ditambahkan di tahap 4.
+    console.log('Data siap kirim:', payload);
+    setValidCount(values.pembesuk.length);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -64,11 +71,15 @@ export default function VisitorForm() {
               })}
               .
             </Alert>
-            <Paper variant="outlined" sx={{ p: 3 }}>
-              <Typography color="text.secondary">
-                Formulir data pembesuk akan ditambahkan pada langkah berikutnya.
-              </Typography>
-            </Paper>
+
+            {validCount !== null && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Data {validCount} pembesuk sudah valid. Pengiriman ke server
+                ditambahkan pada tahap berikutnya.
+              </Alert>
+            )}
+
+            <VisitorDataForm onSubmit={handleSubmit} />
           </>
         )}
       </Container>

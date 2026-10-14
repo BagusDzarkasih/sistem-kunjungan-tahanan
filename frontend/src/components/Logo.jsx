@@ -3,7 +3,7 @@
 import { Box } from '@mui/material';
 import logoBNN from '../assets/LogoBNN.png';
 
-export default function Logo({ size = 36 }) {
+export default function Logo({ size = 50 }) {
   return (
     <Box
       component="img"
