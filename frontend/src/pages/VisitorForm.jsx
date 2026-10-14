@@ -1,11 +1,13 @@
 // Halaman publik pendaftaran pembesuk (alamat "/").
-// Tahap 1: pop-up peraturan. Tahap 2: formulir data pembesuk dinamis.
+// Tahap 1: pop-up peraturan. Tahap 2-3: formulir. Tahap 4: foto + kirim ke backend.
 import { useState } from 'react';
-import { Alert, Box, Chip, Container, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Container, Paper, Typography } from '@mui/material';
 import EventIcon from '@mui/icons-material/Event';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Logo from '../components/Logo';
 import RulesDialog from '../components/RulesDialog';
 import VisitorDataForm from '../components/VisitorDataForm';
+import { submitVisit } from '../services/public.service';
 
 // Tanggal besuk otomatis hari ini (tidak diisi manual), contoh: "Rabu, 14 Oktober 2026"
 const todayLabel = new Date().toLocaleDateString('id-ID', {
@@ -15,22 +17,45 @@ const todayLabel = new Date().toLocaleDateString('id-ID', {
   year: 'numeric',
 });
 
+function getErrorMessage(err) {
+  if (!err.response) {
+    return 'Tidak dapat terhubung ke server. Periksa koneksi lalu coba lagi.';
+  }
+  const data = err.response.data;
+  return (
+    (typeof data === 'string' ? data : data?.message ?? data?.error) ||
+    'Pendaftaran gagal. Silakan coba lagi.'
+  );
+}
+
 export default function VisitorForm() {
   // Waktu pembesuk menyetujui peraturan. null = belum menyetujui.
   const [acceptedAt, setAcceptedAt] = useState(null);
-  // Jumlah pembesuk pada pengiriman terakhir yang lolos validasi.
-  const [validCount, setValidCount] = useState(null);
+  // Balasan backend setelah pendaftaran berhasil. null = belum / formulir tampil.
+  const [result, setResult] = useState(null);
+  const [submitError, setSubmitError] = useState('');
 
-  const handleSubmit = (values) => {
-    const payload = {
-      waktuSetuju: acceptedAt.toISOString(),
-      pembesuk: values.pembesuk,
-    };
-    // Tahap 2: baru sampai validasi. Pengiriman ke backend ditambahkan di tahap 4.
-    console.log('Data siap kirim:', payload);
-    setValidCount(values.pembesuk.length);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const scrollTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  const handleSubmit = async (values) => {
+    setSubmitError('');
+    try {
+      const data = await submitVisit({
+        namaTahanan: values.tahanan.trim(),
+        waktuSetuju: acceptedAt.toISOString(),
+        pembesuk: values.pembesuk,
+      });
+      setResult(data ?? {});
+    } catch (err) {
+      setSubmitError(getErrorMessage(err));
+    }
+    scrollTop();
   };
+
+  const kode =
+    result && typeof result === 'object'
+      ? result.kode ?? result.kodeKunjungan ?? result.kode_kunjungan ?? result.nomorAntrian
+      : null;
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -61,7 +86,7 @@ export default function VisitorForm() {
           sx={{ mb: 3 }}
         />
 
-        {acceptedAt && (
+        {acceptedAt && result === null && (
           <>
             <Alert severity="success" sx={{ mb: 2 }}>
               Peraturan disetujui pukul{' '}
@@ -72,15 +97,34 @@ export default function VisitorForm() {
               .
             </Alert>
 
-            {validCount !== null && (
-              <Alert severity="info" sx={{ mb: 2 }}>
-                Data {validCount} pembesuk sudah valid. Pengiriman ke server
-                ditambahkan pada tahap berikutnya.
+            {submitError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {submitError}
               </Alert>
             )}
 
             <VisitorDataForm onSubmit={handleSubmit} />
           </>
+        )}
+
+        {result !== null && (
+          <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
+            <CheckCircleIcon color="success" sx={{ fontSize: 56, mb: 1 }} />
+            <Typography variant="h6" sx={{ mb: 1 }}>
+              Pendaftaran berhasil
+            </Typography>
+            {kode && (
+              <Typography sx={{ mb: 1 }}>
+                Kode kunjungan: <strong>{kode}</strong>
+              </Typography>
+            )}
+            <Typography color="text.secondary" sx={{ mb: 3 }}>
+              Tunjukkan layar ini kepada petugas saat tiba di lokasi.
+            </Typography>
+            <Button variant="outlined" onClick={() => setResult(null)}>
+              Daftarkan pembesuk lain
+            </Button>
+          </Paper>
         )}
       </Container>
 
