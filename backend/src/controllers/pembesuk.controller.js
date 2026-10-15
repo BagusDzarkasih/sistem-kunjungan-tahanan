@@ -1,4 +1,5 @@
 import pool from '../config/db.js';
+import { deteksiJenis, simpanFoto, hapusFoto } from '../utils/foto.js';
 
 const KOLOM = `id, nik, nama, alamat, no_hp,
   (foto_ktp IS NOT NULL) AS punya_foto_ktp, dibuat_pada`;
@@ -90,7 +91,7 @@ export async function ubah(req, res) {
   const id = Number(req.params.id);
   const { nik, nama, alamat, no_hp } = req.body;
   try {
-    const [ada] = await pool.query('SELECT id FROM pembesuk WHERE id = ?', [id]);
+    const [ada] = await pool.query('SELECT id, foto_ktp FROM pembesuk WHERE id = ?', [id]);
     if (!ada[0]) return tidakDitemukan(res);
 
     await pool.query(
@@ -118,9 +119,46 @@ export async function hapus(req, res) {
     if (jumlah > 0) return masihDipakai(res);
 
     await pool.query('DELETE FROM pembesuk WHERE id = ?', [id]);
+    await hapusFoto(ada[0].foto_ktp);
     res.json({ pesan: 'Data pembesuk dihapus' });
   } catch (err) {
     if (err.code === 'ER_ROW_IS_REFERENCED_2') return masihDipakai(res);
+    serverError(res, err);
+  }
+}
+
+export async function gantiFotoKtp(req, res) {
+  const id = Number(req.params.id);
+
+  if (!req.file) {
+    return res
+      .status(400)
+      .json({ kode: 'INPUT_TIDAK_VALID', pesan: 'Foto KTP wajib diunggah pada field foto_ktp' });
+  }
+
+  const jenis = deteksiJenis(req.file.buffer);
+  if (!jenis) {
+    return res
+      .status(400)
+      .json({ kode: 'FILE_TIDAK_VALID', pesan: 'Hanya file JPG atau PNG yang diterima' });
+  }
+
+  try {
+    const [rows] = await pool.query('SELECT foto_ktp FROM pembesuk WHERE id = ?', [id]);
+    if (!rows[0]) return tidakDitemukan(res);
+
+    const pathBaru = await simpanFoto('ktp', req.file.buffer, jenis);
+    try {
+      await pool.query('UPDATE pembesuk SET foto_ktp = ? WHERE id = ?', [pathBaru, id]);
+    } catch (err) {
+      await hapusFoto(pathBaru); // jangan tinggalkan file yatim kalau database gagal
+      throw err;
+    }
+    await hapusFoto(rows[0].foto_ktp); // hapus foto lama setelah yang baru aman
+
+    const [hasil] = await pool.query(`SELECT ${KOLOM} FROM pembesuk WHERE id = ?`, [id]);
+    res.json({ pembesuk: rapikan(hasil[0]) });
+  } catch (err) {
     serverError(res, err);
   }
 }
