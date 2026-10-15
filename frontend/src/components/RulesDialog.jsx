@@ -79,7 +79,7 @@ export default function RulesDialog({ open, onAccept }) {
       // Tidak bisa ditutup dengan klik di luar atau tombol Esc.
       // Satu-satunya jalan lanjut: mencentang lalu menekan "Lanjutkan".
       onClose={() => {}}
-      disableEscapeKeyDown
+
       aria-labelledby="rules-title"
     >
       <DialogTitle id="rules-title" sx={{ fontWeight: 700 }}>

@@ -1,5 +1,5 @@
 // Halaman publik pendaftaran pembesuk (alamat "/").
-// Tahap 1: pop-up peraturan. Tahap 2-3: formulir. Tahap 4: foto + kirim ke backend.
+// Alur: pop-up peraturan -> formulir -> kirim ke POST /api/kunjungan -> nomor urut.
 import { useState } from 'react';
 import { Alert, Box, Button, Chip, Container, Paper, Typography } from '@mui/material';
 import EventIcon from '@mui/icons-material/Event';
@@ -9,7 +9,7 @@ import RulesDialog from '../components/RulesDialog';
 import VisitorDataForm from '../components/VisitorDataForm';
 import { submitVisit } from '../services/public.service';
 
-// Tanggal besuk otomatis hari ini (tidak diisi manual), contoh: "Rabu, 14 Oktober 2026"
+// Tanggal besuk otomatis hari ini (tidak diisi manual), contoh: "Kamis, 15 Oktober 2026"
 const todayLabel = new Date().toLocaleDateString('id-ID', {
   weekday: 'long',
   day: 'numeric',
@@ -17,45 +17,41 @@ const todayLabel = new Date().toLocaleDateString('id-ID', {
   year: 'numeric',
 });
 
+// Format error backend (kontrak): { kode, pesan }
 function getErrorMessage(err) {
   if (!err.response) {
     return 'Tidak dapat terhubung ke server. Periksa koneksi lalu coba lagi.';
   }
-  const data = err.response.data;
-  return (
-    (typeof data === 'string' ? data : data?.message ?? data?.error) ||
-    'Pendaftaran gagal. Silakan coba lagi.'
-  );
+  const { status, data } = err.response;
+  const pesan = typeof data === 'string' ? data : data?.pesan ?? data?.message;
+  if (pesan) return pesan;
+  if (status === 429) return 'Terlalu banyak percobaan. Tunggu beberapa saat lalu coba lagi.';
+  return 'Pendaftaran gagal. Silakan coba lagi.';
 }
 
 export default function VisitorForm() {
   // Waktu pembesuk menyetujui peraturan. null = belum menyetujui.
   const [acceptedAt, setAcceptedAt] = useState(null);
-  // Balasan backend setelah pendaftaran berhasil. null = belum / formulir tampil.
+  // Balasan backend setelah berhasil. null = formulir masih tampil.
   const [result, setResult] = useState(null);
   const [submitError, setSubmitError] = useState('');
-
-  const scrollTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
   const handleSubmit = async (values) => {
     setSubmitError('');
     try {
       const data = await submitVisit({
-        namaTahanan: values.tahanan.trim(),
-        waktuSetuju: acceptedAt.toISOString(),
+        tahanan: { id: values.tahananId, nama: values.tahananNama },
+        tokenCaptcha: '', // TODO: diisi setelah jenis CAPTCHA ditentukan
         pembesuk: values.pembesuk,
       });
       setResult(data ?? {});
     } catch (err) {
       setSubmitError(getErrorMessage(err));
     }
-    scrollTop();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const kode =
-    result && typeof result === 'object'
-      ? result.kode ?? result.kodeKunjungan ?? result.kode_kunjungan ?? result.nomorAntrian
-      : null;
+  const noUrut = result?.no_urut ?? result?.noUrut;
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -111,15 +107,16 @@ export default function VisitorForm() {
           <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
             <CheckCircleIcon color="success" sx={{ fontSize: 56, mb: 1 }} />
             <Typography variant="h6" sx={{ mb: 1 }}>
-              Pendaftaran berhasil
+              Pendaftaran terkirim
             </Typography>
-            {kode && (
+            {noUrut && (
               <Typography sx={{ mb: 1 }}>
-                Kode kunjungan: <strong>{kode}</strong>
+                Nomor urut: <strong>{noUrut}</strong>
               </Typography>
             )}
             <Typography color="text.secondary" sx={{ mb: 3 }}>
-              Tunjukkan layar ini kepada petugas saat tiba di lokasi.
+              Status: menunggu persetujuan petugas. Tunjukkan layar ini kepada petugas saat
+              tiba di lokasi.
             </Typography>
             <Button variant="outlined" onClick={() => setResult(null)}>
               Daftarkan pembesuk lain

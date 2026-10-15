@@ -1,9 +1,11 @@
-// Formulir data pembesuk (dinamis): pilih tahanan, lalu satu pembesuk atau lebih.
-// Tahap 2: isian + validasi. Tahap 3: cari tahanan + cek NIK lama. Tahap 4: foto + kirim.
+// Formulir data pembesuk (dinamis): nama tahanan, lalu satu pembesuk atau lebih.
+// Pembesuk lama (NIK sudah terdaftar): cukup hubungan + foto pembesuk.
+// Pembesuk baru: semua data + foto KTP + foto pembesuk.
 import { useEffect, useState } from 'react';
 import { Formik, Form, FieldArray, getIn, useFormikContext } from 'formik';
 import * as Yup from 'yup';
 import {
+  Alert,
   Box,
   Button,
   CircularProgress,
@@ -17,7 +19,8 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import PhotoField from './PhotoField';
-import { findVisitorByNik } from '../services/public.service';
+import PrisonerSearch from './PrisonerSearch';
+import { checkVisitorNik, isKnownVisitor } from '../services/public.service';
 
 const MAX_VISITORS = 5;
 
@@ -45,13 +48,22 @@ const emptyVisitor = () => ({
   fotoPembesuk: null,
   nikChecked: '', // NIK yang sudah dicek ke server
   nikStatus: '', // 'lama' | 'baru' | 'gagal'
+  namaTersamar: '', // nama tersamar dari server untuk pembesuk lama
 });
 
+// Aturan yang hanya berlaku untuk pembesuk BARU. Pembesuk lama dilewati.
+function ruleForNew(message, check) {
+  return {
+    name: message,
+    message,
+    test(value) {
+      if (isKnownVisitor(this.parent)) return true;
+      return check(String(value ?? '').trim());
+    },
+  };
+}
+
 const visitorSchema = Yup.object({
-  nama: Yup.string()
-    .trim()
-    .min(3, 'Nama minimal 3 huruf')
-    .required('Nama wajib diisi'),
   nik: Yup.string()
     .required('NIK wajib diisi')
     .matches(/^\d{16}$/, 'NIK harus 16 digit angka')
@@ -59,20 +71,31 @@ const visitorSchema = Yup.object({
       const list = this.from?.[1]?.value?.pembesuk ?? [];
       return list.filter((p) => p.nik === value).length <= 1;
     }),
+  nama: Yup.string()
+    .test(ruleForNew('Nama wajib diisi', (v) => v !== ''))
+    .test(ruleForNew('Nama minimal 3 huruf', (v) => v === '' || v.length >= 3)),
   noHp: Yup.string()
-    .required('Nomor HP wajib diisi')
-    .matches(/^(\+62|62|0)8\d{8,12}$/, 'Nomor HP tidak valid, contoh: 081234567890'),
-  hubungan: Yup.string().required('Hubungan dengan tahanan wajib dipilih'),
+    .test(ruleForNew('Nomor HP wajib diisi', (v) => v !== ''))
+    .test(
+      ruleForNew(
+        'Nomor HP tidak valid, contoh: 081234567890',
+        (v) => v === '' || /^(\+62|62|0)8\d{8,12}$/.test(v)
+      )
+    ),
   alamat: Yup.string()
-    .trim()
-    .min(5, 'Alamat minimal 5 karakter')
-    .required('Alamat wajib diisi'),
-  fotoKtp: Yup.mixed().required('Foto KTP wajib diambil'),
-  fotoPembesuk: Yup.mixed().required('Foto pembesuk wajib diambil'),
+    .test(ruleForNew('Alamat wajib diisi', (v) => v !== ''))
+    .test(ruleForNew('Alamat minimal 5 karakter', (v) => v === '' || v.length >= 5)),
+  hubungan: Yup.string().required('Hubungan dengan tahanan wajib dipilih'),
+  fotoKtp: Yup.mixed()
+    .nullable()
+    .test('ktp-wajib', 'Foto KTP wajib diambil', function (value) {
+      return isKnownVisitor(this.parent) || Boolean(value);
+    }),
+  fotoPembesuk: Yup.mixed().nullable().required('Foto pembesuk wajib diambil'),
 });
 
 const schema = Yup.object({
-    tahanan: Yup.string()
+  tahananNama: Yup.string()
     .trim()
     .min(3, 'Nama tahanan minimal 3 huruf')
     .required('Nama tahanan wajib diisi'),
@@ -104,24 +127,18 @@ function FormTextField({ name, helperText, ...props }) {
 function VisitorFields({ index, visitor, canRemove, onRemove }) {
   const { setFieldValue, errors, touched } = useFormikContext();
   const prefix = `pembesuk.${index}`;
-  const { nik, nikChecked, nikStatus } = visitor;
+  const { nik, nikChecked, nikStatus, namaTersamar } = visitor;
+  const known = isKnownVisitor(visitor);
 
-  // Tahap 3: begitu NIK 16 digit, cek apakah pembesuk pernah terdaftar.
+  // Begitu NIK 16 digit, tanyakan ke server apakah pembesuk pernah terdaftar.
   useEffect(() => {
     if (nik.length !== 16 || nikChecked === nik) return undefined;
 
     const controller = new AbortController();
-    findVisitorByNik(nik, controller.signal)
-      .then((found) => {
+    checkVisitorNik(nik, controller.signal)
+      .then(({ found, maskedName }) => {
         if (controller.signal.aborted) return;
-        if (found) {
-          if (found.nama) setFieldValue(`${prefix}.nama`, found.nama);
-          if (found.noHp) setFieldValue(`${prefix}.noHp`, found.noHp);
-          if (found.alamat) setFieldValue(`${prefix}.alamat`, found.alamat);
-          if (HUBUNGAN.includes(found.hubungan)) {
-            setFieldValue(`${prefix}.hubungan`, found.hubungan);
-          }
-        }
+        setFieldValue(`${prefix}.namaTersamar`, maskedName);
         setFieldValue(`${prefix}.nikStatus`, found ? 'lama' : 'baru');
         setFieldValue(`${prefix}.nikChecked`, nik);
       })
@@ -137,11 +154,7 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
   let nikHelper = `${nik.length}/16 digit`;
   if (nik.length === 16) {
     if (nikChecked !== nik) nikHelper = 'Memeriksa NIK...';
-    else if (nikStatus === 'lama') {
-      nikHelper = 'Pembesuk pernah terdaftar. Data terisi otomatis, mohon periksa kembali.';
-    } else if (nikStatus === 'gagal') {
-      nikHelper = 'Pengecekan NIK gagal. Isi data secara manual.';
-    }
+    else if (nikStatus === 'gagal') nikHelper = 'Pengecekan NIK gagal. Isi data secara lengkap.';
   }
 
   const photoError = (field) =>
@@ -174,22 +187,36 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
           name={`${prefix}.nik`}
           label="NIK"
           autoComplete="off"
-          inputProps={{ inputMode: 'numeric', maxLength: 16 }}
+          slotProps={{ htmlInput: { inputMode: 'numeric', maxLength: 16 } }}
           helperText={nikHelper}
           onChange={(e) =>
             setFieldValue(`${prefix}.nik`, e.target.value.replace(/\D/g, '').slice(0, 16))
           }
         />
-        <FormTextField name={`${prefix}.nama`} label="Nama lengkap" autoComplete="off" />
-        <FormTextField
-          name={`${prefix}.noHp`}
-          label="Nomor HP"
-          autoComplete="off"
-          inputProps={{ inputMode: 'tel' }}
-          onChange={(e) =>
-            setFieldValue(`${prefix}.noHp`, e.target.value.replace(/[^\d+]/g, '').slice(0, 15))
-          }
-        />
+
+        {known ? (
+          <Alert severity="success">
+            Pembesuk sudah terdaftar{namaTersamar ? ` atas nama ${namaTersamar}` : ''}. Data
+            identitas tidak perlu diisi lagi. Cukup pilih hubungan dan ambil foto pembesuk.
+          </Alert>
+        ) : (
+          <>
+            <FormTextField name={`${prefix}.nama`} label="Nama lengkap" autoComplete="off" />
+            <FormTextField
+              name={`${prefix}.noHp`}
+              label="Nomor HP"
+              autoComplete="off"
+              slotProps={{ htmlInput: { inputMode: 'tel' } }}
+              onChange={(e) =>
+                setFieldValue(
+                  `${prefix}.noHp`,
+                  e.target.value.replace(/[^\d+]/g, '').slice(0, 15)
+                )
+              }
+            />
+          </>
+        )}
+
         <FormTextField select name={`${prefix}.hubungan`} label="Hubungan dengan tahanan">
           {HUBUNGAN.map((h) => (
             <MenuItem key={h} value={h}>
@@ -197,15 +224,20 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
             </MenuItem>
           ))}
         </FormTextField>
-        <FormTextField name={`${prefix}.alamat`} label="Alamat" multiline minRows={2} />
 
-        <PhotoField
-          label="Foto KTP"
-          capture="environment"
-          value={visitor.fotoKtp}
-          error={photoError('fotoKtp')}
-          onChange={(blob) => setFieldValue(`${prefix}.fotoKtp`, blob)}
-        />
+        {!known && (
+          <>
+            <FormTextField name={`${prefix}.alamat`} label="Alamat" multiline minRows={2} />
+            <PhotoField
+              label="Foto KTP"
+              capture="environment"
+              value={visitor.fotoKtp}
+              error={photoError('fotoKtp')}
+              onChange={(blob) => setFieldValue(`${prefix}.fotoKtp`, blob)}
+            />
+          </>
+        )}
+
         <PhotoField
           label="Foto pembesuk (wajah)"
           capture="user"
@@ -220,7 +252,8 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
 
 export default function VisitorDataForm({ onSubmit }) {
   const [initialValues] = useState(() => ({
-    tahanan: '',
+    tahananId: null, // terisi kalau dipilih dari saran
+    tahananNama: '',
     pembesuk: [emptyVisitor()],
   }));
 
@@ -232,7 +265,7 @@ export default function VisitorDataForm({ onSubmit }) {
         await onSubmit(values);
       }}
     >
-       {({ values, isSubmitting }) => (
+      {({ values, errors, touched, isSubmitting, setFieldValue, setFieldTouched }) => (
         <Form noValidate>
           {/* Selama mengirim, seluruh isian dikunci. */}
           <Box
@@ -241,11 +274,15 @@ export default function VisitorDataForm({ onSubmit }) {
             sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}
           >
             <Stack spacing={2}>
-             <FormTextField
-                name="tahanan"
-                label="Nama tahanan yang dibesuk"
-                autoComplete="off"
-                helperText="Tulis sesuai nama asli tahanan"
+              <PrisonerSearch
+                id={values.tahananId}
+                nama={values.tahananNama}
+                onChange={({ id, nama }) => {
+                  setFieldValue('tahananId', id);
+                  setFieldValue('tahananNama', nama);
+                }}
+                onBlur={() => setFieldTouched('tahananNama', true)}
+                error={touched.tahananNama ? errors.tahananNama : undefined}
               />
 
               <FieldArray name="pembesuk">

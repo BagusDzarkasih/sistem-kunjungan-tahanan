@@ -1,55 +1,69 @@
 // Pemanggil endpoint publik (tanpa login) untuk form pembesuk.
-// Kalau bentuk endpoint atau balasan backend berbeda, cukup ubah file ini.
+// Mengikuti Kontrak API Draf 1 (12 Oktober 2026), bagian 2 "Publik".
 import api from './api';
 
-// GET /peraturan -> teks peraturan untuk pop-up.
+// GET /api/peraturan -> teks peraturan untuk pop-up.
 export async function getRules() {
   const { data } = await api.get('/peraturan');
   if (typeof data === 'string') return data;
   return data.peraturan ?? data.nilai ?? '';
 }
 
-// GET /pembesuk/nik/:nik -> data pembesuk lama, atau null kalau belum terdaftar (404).
-export async function findVisitorByNik(nik, signal) {
+// GET /api/tahanan/cari?q=abc -> [{ id, nama }] (minimal 3 huruf, maksimal 10 hasil)
+export async function searchPrisoners(query, signal) {
+  const { data } = await api.get('/tahanan/cari', { params: { q: query }, signal });
+  const list = Array.isArray(data) ? data : data?.data ?? data?.tahanan ?? [];
+  return list.map((t) => ({ id: t.id, nama: t.nama }));
+}
+
+// POST /api/pembesuk/cek-nik, body { nik }
+// Balasan: sudah terdaftar atau belum, plus nama tersamar (misalnya "B*** S****").
+export async function checkVisitorNik(nik, signal) {
   try {
-    const { data } = await api.get(`/pembesuk/nik/${nik}`, { signal });
-    const v = data?.data ?? data;
-    if (!v || !v.nama) return null;
-    return {
-      nama: v.nama,
-      noHp: v.noHp ?? v.no_hp ?? '',
-      alamat: v.alamat ?? '',
-      hubungan: v.hubungan ?? '',
-    };
+    const { data } = await api.post('/pembesuk/cek-nik', { nik }, { signal });
+    const d = data?.data ?? data ?? {};
+    const found = Boolean(d.ditemukan ?? d.terdaftar ?? d.found);
+    return { found, maskedName: found ? d.nama_tersamar ?? d.nama ?? '' : '' };
   } catch (err) {
-    if (err.response?.status === 404) return null;
+    if (err.response?.status === 404) return { found: false, maskedName: '' };
     throw err;
   }
 }
 
-// POST /kunjungan (multipart/form-data) -> mengirim data dan foto.
-export async function submitVisit({ namaTahanan, waktuSetuju, pembesuk }) {
-  const form = new FormData();
-  form.append('namaTahanan', namaTahanan);
-  form.append('waktuSetuju', waktuSetuju);
+// Pembesuk lama = NIK sudah dicek, hasilnya "ditemukan", dan NIK belum diubah lagi.
+export const isKnownVisitor = (p) => p.nikStatus === 'lama' && p.nikChecked === p.nik;
 
-  // Data teks dikirim sebagai JSON, foto dikirim terpisah sebagai file.
-  const teks = pembesuk.map((p) => ({
-    nama: p.nama.trim(),
-    nik: p.nik,
-    noHp: p.noHp,
-    hubungan: p.hubungan,
-    alamat: p.alamat.trim(),
-  }));
-  form.append('pembesuk', JSON.stringify(teks));
+// POST /api/kunjungan (multipart/form-data)
+//  - bagian "data": teks JSON
+//  - foto_pembesuk_N: wajib untuk semua pembesuk
+//  - foto_ktp_N: hanya untuk pembesuk baru
+export async function submitVisit({ tahanan, tokenCaptcha, pembesuk }) {
+  const data = {
+    // Dipilih dari saran -> tahanan_id. Diketik sendiri -> tahanan_nama_baru.
+    ...(tahanan.id ? { tahanan_id: tahanan.id } : { tahanan_nama_baru: tahanan.nama.trim() }),
+    setuju_peraturan: true,
+    token_captcha: tokenCaptcha,
+    pembesuk: pembesuk.map((p) => ({
+      nik: p.nik,
+      nama: p.nama.trim(),
+      alamat: p.alamat.trim(),
+      no_hp: p.noHp,
+      hubungan: p.hubungan,
+    })),
+  };
+
+  const form = new FormData();
+  form.append('data', JSON.stringify(data));
 
   pembesuk.forEach((p, i) => {
-    form.append(`fotoKtp_${i}`, p.fotoKtp, `ktp_${i}.jpg`);
-    form.append(`fotoPembesuk_${i}`, p.fotoPembesuk, `pembesuk_${i}.jpg`);
+    form.append(`foto_pembesuk_${i}`, p.fotoPembesuk, `pembesuk_${i}.jpg`);
+    if (!isKnownVisitor(p) && p.fotoKtp) {
+      form.append(`foto_ktp_${i}`, p.fotoKtp, `ktp_${i}.jpg`);
+    }
   });
 
-  const { data } = await api.post('/kunjungan', form, {
+  const res = await api.post('/kunjungan', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-  return data?.data ?? data;
+  return res.data?.data ?? res.data;
 }
