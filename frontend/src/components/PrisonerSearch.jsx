@@ -39,10 +39,10 @@ export default function PrisonerSearch({ id, nama, onChange, onBlur, error }) {
     };
   }, [query, canSearch]);
 
-  let helper = 'Tulis sesuai nama asli tahanan';
+  let helper = 'Ketik minimal 3 huruf';
   if (id) helper = 'Tahanan dipilih dari daftar';
-  else if (failed) helper = 'Saran nama tidak dapat dimuat. Anda tetap bisa mengetik nama lengkap.';
-  else if (canSearch) helper = 'Pilih dari saran, atau tetap ketik nama lengkap kalau tidak ada.';
+  else if (failed) helper = 'Saran tidak dapat dimuat. Tulis nama tahanan secara lengkap.';
+  else if (canSearch) helper = 'Tidak ada di saran? Tulis nama baru.';
 
   return (
     <Autocomplete
@@ -65,7 +65,7 @@ export default function PrisonerSearch({ id, nama, onChange, onBlur, error }) {
       renderInput={(params) => (
         <TextField
           {...params}
-          label="Nama tahanan yang dibesuk"
+          label="Nama tahanan"
           error={Boolean(error)}
           helperText={error || helper}
         />

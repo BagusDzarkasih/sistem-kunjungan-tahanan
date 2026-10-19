@@ -1,6 +1,7 @@
-// Formulir data pembesuk (dinamis): nama tahanan, lalu satu pembesuk atau lebih.
-// Pembesuk lama (NIK sudah terdaftar): cukup hubungan + foto pembesuk.
-// Pembesuk baru: semua data + foto KTP + foto pembesuk.
+// Formulir pendaftaran kunjungan, urutannya:
+// nama tahanan -> pembesuk 1 sampai 4 (nama, NIK, hubungan, foto KTP, selfie)
+// -> alamat (sekali) -> nomor WhatsApp (sekali) -> CAPTCHA -> kirim.
+// Pembesuk lama (NIK sudah terdaftar): foto KTP tidak diminta lagi.
 import { useEffect, useState } from 'react';
 import { Formik, Form, FieldArray, getIn, useFormikContext } from 'formik';
 import * as Yup from 'yup';
@@ -18,11 +19,13 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
+import CaptchaField from './CaptchaField';
 import PhotoField from './PhotoField';
 import PrisonerSearch from './PrisonerSearch';
 import { checkVisitorNik, isKnownVisitor } from '../services/public.service';
+import { CAPTCHA_DEV_BYPASS, CAPTCHA_DEV_TOKEN } from '../utils/captcha';
 
-const MAX_VISITORS = 5;
+const MAX_VISITORS = 4;
 
 const HUBUNGAN = [
   'Suami/Istri',
@@ -35,17 +38,18 @@ const HUBUNGAN = [
   'Lainnya',
 ];
 
+// Nilai awal kolom CAPTCHA: kosong, kecuali mode lewati saat pengembangan.
+const initialCaptcha = () => (CAPTCHA_DEV_BYPASS ? CAPTCHA_DEV_TOKEN : '');
+
 // id dipakai sebagai key React supaya data tidak tertukar saat pembesuk dihapus.
 let seq = 0;
 const emptyVisitor = () => ({
   id: `v${Date.now()}-${seq++}`,
   nama: '',
   nik: '',
-  noHp: '',
   hubungan: '',
-  alamat: '',
   fotoKtp: null,
-  fotoPembesuk: null,
+  fotoPembesuk: null, // selfie terbaru
   nikChecked: '', // NIK yang sudah dicek ke server
   nikStatus: '', // 'lama' | 'baru' | 'gagal'
   namaTersamar: '', // nama tersamar dari server untuk pembesuk lama
@@ -64,6 +68,9 @@ function ruleForNew(message, check) {
 }
 
 const visitorSchema = Yup.object({
+  nama: Yup.string()
+    .test(ruleForNew('Nama wajib diisi', (v) => v !== ''))
+    .test(ruleForNew('Nama minimal 3 huruf', (v) => v === '' || v.length >= 3)),
   nik: Yup.string()
     .required('NIK wajib diisi')
     .matches(/^\d{16}$/, 'NIK harus 16 digit angka')
@@ -71,27 +78,13 @@ const visitorSchema = Yup.object({
       const list = this.from?.[1]?.value?.pembesuk ?? [];
       return list.filter((p) => p.nik === value).length <= 1;
     }),
-  nama: Yup.string()
-    .test(ruleForNew('Nama wajib diisi', (v) => v !== ''))
-    .test(ruleForNew('Nama minimal 3 huruf', (v) => v === '' || v.length >= 3)),
-  noHp: Yup.string()
-    .test(ruleForNew('Nomor HP wajib diisi', (v) => v !== ''))
-    .test(
-      ruleForNew(
-        'Nomor HP tidak valid, contoh: 081234567890',
-        (v) => v === '' || /^(\+62|62|0)8\d{8,12}$/.test(v)
-      )
-    ),
-  alamat: Yup.string()
-    .test(ruleForNew('Alamat wajib diisi', (v) => v !== ''))
-    .test(ruleForNew('Alamat minimal 5 karakter', (v) => v === '' || v.length >= 5)),
   hubungan: Yup.string().required('Hubungan dengan tahanan wajib dipilih'),
   fotoKtp: Yup.mixed()
     .nullable()
     .test('ktp-wajib', 'Foto KTP wajib diambil', function (value) {
       return isKnownVisitor(this.parent) || Boolean(value);
     }),
-  fotoPembesuk: Yup.mixed().nullable().required('Foto pembesuk wajib diambil'),
+  fotoPembesuk: Yup.mixed().nullable().required('Foto selfie wajib diambil'),
 });
 
 const schema = Yup.object({
@@ -103,6 +96,21 @@ const schema = Yup.object({
     .of(visitorSchema)
     .min(1, 'Minimal 1 pembesuk')
     .max(MAX_VISITORS, `Maksimal ${MAX_VISITORS} pembesuk`),
+  // Alamat wajib selama masih ada pembesuk baru. Kalau semuanya sudah terdaftar, boleh kosong.
+  alamat: Yup.string()
+    .test('alamat-wajib', 'Alamat wajib diisi', function (value) {
+      const list = this.parent.pembesuk ?? [];
+      if (list.every((p) => isKnownVisitor(p))) return true;
+      return String(value ?? '').trim() !== '';
+    })
+    .test('alamat-min', 'Alamat minimal 5 karakter', (value) => {
+      const text = String(value ?? '').trim();
+      return text === '' || text.length >= 5;
+    }),
+  noWhatsapp: Yup.string()
+    .required('Nomor WhatsApp wajib diisi')
+    .matches(/^(\+62|62|0)8\d{8,12}$/, 'Nomor tidak valid, contoh: 081234567890'),
+  captcha: Yup.string().required('Centang "Saya bukan robot" terlebih dahulu'),
 });
 
 // Kolom teks yang terhubung ke Formik. Error tampil setelah kolom disentuh.
@@ -170,7 +178,7 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
           mb: 2,
         }}
       >
-        <Typography fontWeight={700}>Pembesuk {index + 1}</Typography>
+        <Typography sx={{ fontWeight: 700 }}>Pembesuk {index + 1}</Typography>
         {canRemove && (
           <IconButton
             aria-label={`Hapus pembesuk ${index + 1}`}
@@ -184,8 +192,17 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
 
       <Stack spacing={2}>
         <FormTextField
+          name={`${prefix}.nama`}
+          label="Nama lengkap"
+          placeholder="Sesuai KTP"
+          autoComplete="off"
+          helperText={known ? 'Tidak wajib untuk pembesuk yang sudah terdaftar' : undefined}
+        />
+
+        <FormTextField
           name={`${prefix}.nik`}
           label="NIK"
+          placeholder="16 digit angka"
           autoComplete="off"
           slotProps={{ htmlInput: { inputMode: 'numeric', maxLength: 16 } }}
           helperText={nikHelper}
@@ -194,27 +211,11 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
           }
         />
 
-        {known ? (
+        {known && (
           <Alert severity="success">
-            Pembesuk sudah terdaftar{namaTersamar ? ` atas nama ${namaTersamar}` : ''}. Data
-            identitas tidak perlu diisi lagi. Cukup pilih hubungan dan ambil foto pembesuk.
+            Pembesuk sudah terdaftar{namaTersamar ? ` atas nama ${namaTersamar}` : ''}. Foto KTP
+            tidak perlu diambil lagi. Cukup ambil foto selfie terbaru.
           </Alert>
-        ) : (
-          <>
-            <FormTextField name={`${prefix}.nama`} label="Nama lengkap" autoComplete="off" />
-            <FormTextField
-              name={`${prefix}.noHp`}
-              label="Nomor HP"
-              autoComplete="off"
-              slotProps={{ htmlInput: { inputMode: 'tel' } }}
-              onChange={(e) =>
-                setFieldValue(
-                  `${prefix}.noHp`,
-                  e.target.value.replace(/[^\d+]/g, '').slice(0, 15)
-                )
-              }
-            />
-          </>
         )}
 
         <FormTextField select name={`${prefix}.hubungan`} label="Hubungan dengan tahanan">
@@ -225,9 +226,15 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
           ))}
         </FormTextField>
 
-        {!known && (
-          <>
-            <FormTextField name={`${prefix}.alamat`} label="Alamat" multiline minRows={2} />
+        {/* Foto KTP dan selfie berdampingan. Pembesuk lama: hanya selfie. */}
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: known ? '1fr' : '1fr 1fr',
+            gap: 1.5,
+          }}
+        >
+          {!known && (
             <PhotoField
               label="Foto KTP"
               capture="environment"
@@ -235,16 +242,15 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
               error={photoError('fotoKtp')}
               onChange={(blob) => setFieldValue(`${prefix}.fotoKtp`, blob)}
             />
-          </>
-        )}
-
-        <PhotoField
-          label="Foto pembesuk (wajah)"
-          capture="user"
-          value={visitor.fotoPembesuk}
-          error={photoError('fotoPembesuk')}
-          onChange={(blob) => setFieldValue(`${prefix}.fotoPembesuk`, blob)}
-        />
+          )}
+          <PhotoField
+            label="Foto selfie terbaru"
+            capture="user"
+            value={visitor.fotoPembesuk}
+            error={photoError('fotoPembesuk')}
+            onChange={(blob) => setFieldValue(`${prefix}.fotoPembesuk`, blob)}
+          />
+        </Box>
       </Stack>
     </Paper>
   );
@@ -255,14 +261,22 @@ export default function VisitorDataForm({ onSubmit }) {
     tahananId: null, // terisi kalau dipilih dari saran
     tahananNama: '',
     pembesuk: [emptyVisitor()],
+    alamat: '',
+    noWhatsapp: '',
+    captcha: initialCaptcha(),
   }));
+  // Naik 1 setiap kali kirim gagal: token CAPTCHA hanya sekali pakai, jadi kotaknya dimuat ulang.
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   return (
     <Formik
       initialValues={initialValues}
       validationSchema={schema}
-      onSubmit={async (values) => {
+      onSubmit={async (values, { setFieldValue }) => {
         await onSubmit(values);
+        // Kalau berhasil, halaman berganti. Kalau gagal, pembesuk harus mencentang ulang.
+        setCaptchaKey((k) => k + 1);
+        setFieldValue('captcha', initialCaptcha(), false);
       }}
     >
       {({ values, errors, touched, isSubmitting, setFieldValue, setFieldTouched }) => (
@@ -309,9 +323,43 @@ export default function VisitorDataForm({ onSubmit }) {
                         ? ` (maksimal ${MAX_VISITORS})`
                         : ''}
                     </Button>
+                    <Typography
+                      variant="body2"
+                      align="center"
+                      sx={{ color: 'text.secondary' }}
+                    >
+                      Jumlah pembesuk: {values.pembesuk.length} dari maksimal {MAX_VISITORS}.
+                      Pembesuk 2 sampai {MAX_VISITORS} tidak wajib diisi.
+                    </Typography>
                   </Stack>
                 )}
               </FieldArray>
+
+              <FormTextField
+                name="alamat"
+                label="Alamat"
+                placeholder="Alamat lengkap"
+                multiline
+                minRows={2}
+              />
+
+              <FormTextField
+                name="noWhatsapp"
+                label="Nomor WhatsApp"
+                placeholder="08xxxxxxxxxx"
+                autoComplete="off"
+                slotProps={{ htmlInput: { inputMode: 'tel' } }}
+                helperText="Informasi persetujuan kunjungan akan dikirim ke nomor ini"
+                onChange={(e) =>
+                  setFieldValue('noWhatsapp', e.target.value.replace(/[^\d+]/g, '').slice(0, 15))
+                }
+              />
+
+              <CaptchaField
+                key={captchaKey}
+                onChange={(token) => setFieldValue('captcha', token)}
+                error={touched.captcha ? errors.captcha : undefined}
+              />
 
               <Button
                 type="submit"
