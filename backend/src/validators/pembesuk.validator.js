@@ -10,6 +10,13 @@ export const listRules = [
   query('q').optional().isString().isLength({ max: 100 }).withMessage('q maksimal 100 karakter'),
 ];
 
+export const cekNikRules = [
+  body('nik')
+    .isString().withMessage('NIK harus berupa teks').bail()
+    .trim()
+    .matches(/^\d{16}$/).withMessage('NIK harus 16 digit angka'),
+];
+
 export const pembesukRules = [
   body('nik')
     .isString().withMessage('NIK harus berupa teks').bail()
