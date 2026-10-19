@@ -8,7 +8,6 @@ const serverError = (res, err) => {
 const tidakDitemukan = (res) =>
   res.status(404).json({ kode: 'TIDAK_DITEMUKAN', pesan: 'Data tahanan tidak ditemukan' });
 
-// PUBLIK: saran nama untuk form pembesuk (maksimal 10, hanya id dan nama)
 export async function cari(req, res) {
   const q = String(req.query.q).trim();
   if (q.length < 3) return res.json({ data: [] });

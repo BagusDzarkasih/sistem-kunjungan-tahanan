@@ -10,11 +10,11 @@ import {
 
 const router = Router();
 
-// PUBLIK. Harus di atas '/:id', kalau tidak "cari" dianggap sebagai id.
-router.get('/cari', cariRules, validate, cari);
-
-// Semua route di bawah ini wajib login (admin dan petugas sama-sama boleh)
+// Data tahanan rahasia: semua endpoint wajib login (admin dan petugas sama-sama boleh)
 router.use(verifyToken);
+
+// Harus di atas '/:id', kalau tidak "cari" dianggap sebagai id.
+router.get('/cari', cariRules, validate, cari);
 
 router.get('/', listRules, validate, daftar);
 router.get('/:id', idRules, validate, detail);

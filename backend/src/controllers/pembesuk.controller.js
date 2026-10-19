@@ -1,5 +1,6 @@
 import pool from '../config/db.js';
 import { deteksiJenis, simpanFoto, hapusFoto } from '../utils/foto.js';
+import { samarkanNama } from '../utils/samar.js';
 
 const KOLOM = `id, nik, nama, alamat, no_hp,
   (foto_ktp IS NOT NULL) AS punya_foto_ktp, dibuat_pada`;
@@ -72,6 +73,18 @@ export async function detail(req, res) {
   }
 }
 
+// Publik: hanya memberi tahu NIK sudah terdaftar atau belum, plus nama tersamar.
+export async function cekNik(req, res) {
+  const { nik } = req.body;
+  try {
+    const [rows] = await pool.query('SELECT nama FROM pembesuk WHERE nik = ?', [nik]);
+    if (!rows[0]) return res.json({ ditemukan: false });
+    res.json({ ditemukan: true, nama_tersamar: samarkanNama(rows[0].nama) });
+  } catch (err) {
+    serverError(res, err);
+  }
+}
+
 export async function tambah(req, res) {
   const { nik, nama, alamat, no_hp } = req.body;
   try {
@@ -109,7 +122,7 @@ export async function ubah(req, res) {
 export async function hapus(req, res) {
   const id = Number(req.params.id);
   try {
-    const [ada] = await pool.query('SELECT id FROM pembesuk WHERE id = ?', [id]);
+    const [ada] = await pool.query('SELECT id, foto_ktp FROM pembesuk WHERE id = ?', [id]);
     if (!ada[0]) return tidakDitemukan(res);
 
     const [[{ jumlah }]] = await pool.query(

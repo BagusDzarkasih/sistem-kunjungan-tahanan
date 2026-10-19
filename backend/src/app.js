@@ -6,6 +6,7 @@ import pool from './config/db.js';
 import authRoutes from './routes/auth.routes.js';
 import tahananRoutes from './routes/tahanan.routes.js';
 import pembesukRoutes from './routes/pembesuk.routes.js';
+import kunjunganRoutes from './routes/kunjungan.routes.js';
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.get('/api/health', async (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/tahanan', tahananRoutes);
 app.use('/api/pembesuk', pembesukRoutes);
+app.use('/api/kunjungan', kunjunganRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ kode: 'TIDAK_DITEMUKAN', pesan: 'Alamat tidak ditemukan' });
