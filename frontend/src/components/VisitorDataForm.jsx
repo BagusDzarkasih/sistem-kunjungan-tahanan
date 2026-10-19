@@ -1,9 +1,12 @@
-// Formulir data pembesuk (dinamis): pilih tahanan, lalu satu pembesuk atau lebih.
-// Tahap 2: isian + validasi. Tahap 3: cari tahanan + cek NIK lama. Tahap 4: foto + kirim.
+// Formulir pendaftaran kunjungan, urutannya:
+// nama tahanan -> pembesuk 1 sampai 4 (nama, NIK, hubungan, foto KTP, selfie)
+// -> alamat (sekali) -> nomor WhatsApp (sekali) -> CAPTCHA -> kirim.
+// Pembesuk lama (NIK sudah terdaftar): foto KTP tidak diminta lagi.
 import { useEffect, useState } from 'react';
 import { Formik, Form, FieldArray, getIn, useFormikContext } from 'formik';
 import * as Yup from 'yup';
 import {
+  Alert,
   Box,
   Button,
   CircularProgress,
@@ -16,10 +19,13 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
+import CaptchaField from './CaptchaField';
 import PhotoField from './PhotoField';
-import { findVisitorByNik } from '../services/public.service';
+import PrisonerSearch from './PrisonerSearch';
+import { checkVisitorNik, isKnownVisitor } from '../services/public.service';
+import { CAPTCHA_DEV_BYPASS, CAPTCHA_DEV_TOKEN } from '../utils/captcha';
 
-const MAX_VISITORS = 5;
+const MAX_VISITORS = 4;
 
 const HUBUNGAN = [
   'Suami/Istri',
@@ -32,26 +38,39 @@ const HUBUNGAN = [
   'Lainnya',
 ];
 
+// Nilai awal kolom CAPTCHA: kosong, kecuali mode lewati saat pengembangan.
+const initialCaptcha = () => (CAPTCHA_DEV_BYPASS ? CAPTCHA_DEV_TOKEN : '');
+
 // id dipakai sebagai key React supaya data tidak tertukar saat pembesuk dihapus.
 let seq = 0;
 const emptyVisitor = () => ({
   id: `v${Date.now()}-${seq++}`,
   nama: '',
   nik: '',
-  noHp: '',
   hubungan: '',
-  alamat: '',
   fotoKtp: null,
-  fotoPembesuk: null,
+  fotoPembesuk: null, // selfie terbaru
   nikChecked: '', // NIK yang sudah dicek ke server
   nikStatus: '', // 'lama' | 'baru' | 'gagal'
+  namaTersamar: '', // nama tersamar dari server untuk pembesuk lama
 });
+
+// Aturan yang hanya berlaku untuk pembesuk BARU. Pembesuk lama dilewati.
+function ruleForNew(message, check) {
+  return {
+    name: message,
+    message,
+    test(value) {
+      if (isKnownVisitor(this.parent)) return true;
+      return check(String(value ?? '').trim());
+    },
+  };
+}
 
 const visitorSchema = Yup.object({
   nama: Yup.string()
-    .trim()
-    .min(3, 'Nama minimal 3 huruf')
-    .required('Nama wajib diisi'),
+    .test(ruleForNew('Nama wajib diisi', (v) => v !== ''))
+    .test(ruleForNew('Nama minimal 3 huruf', (v) => v === '' || v.length >= 3)),
   nik: Yup.string()
     .required('NIK wajib diisi')
     .matches(/^\d{16}$/, 'NIK harus 16 digit angka')
@@ -59,20 +78,17 @@ const visitorSchema = Yup.object({
       const list = this.from?.[1]?.value?.pembesuk ?? [];
       return list.filter((p) => p.nik === value).length <= 1;
     }),
-  noHp: Yup.string()
-    .required('Nomor HP wajib diisi')
-    .matches(/^(\+62|62|0)8\d{8,12}$/, 'Nomor HP tidak valid, contoh: 081234567890'),
   hubungan: Yup.string().required('Hubungan dengan tahanan wajib dipilih'),
-  alamat: Yup.string()
-    .trim()
-    .min(5, 'Alamat minimal 5 karakter')
-    .required('Alamat wajib diisi'),
-  fotoKtp: Yup.mixed().required('Foto KTP wajib diambil'),
-  fotoPembesuk: Yup.mixed().required('Foto pembesuk wajib diambil'),
+  fotoKtp: Yup.mixed()
+    .nullable()
+    .test('ktp-wajib', 'Foto KTP wajib diambil', function (value) {
+      return isKnownVisitor(this.parent) || Boolean(value);
+    }),
+  fotoPembesuk: Yup.mixed().nullable().required('Foto selfie wajib diambil'),
 });
 
 const schema = Yup.object({
-    tahanan: Yup.string()
+  tahananNama: Yup.string()
     .trim()
     .min(3, 'Nama tahanan minimal 3 huruf')
     .required('Nama tahanan wajib diisi'),
@@ -80,6 +96,21 @@ const schema = Yup.object({
     .of(visitorSchema)
     .min(1, 'Minimal 1 pembesuk')
     .max(MAX_VISITORS, `Maksimal ${MAX_VISITORS} pembesuk`),
+  // Alamat wajib selama masih ada pembesuk baru. Kalau semuanya sudah terdaftar, boleh kosong.
+  alamat: Yup.string()
+    .test('alamat-wajib', 'Alamat wajib diisi', function (value) {
+      const list = this.parent.pembesuk ?? [];
+      if (list.every((p) => isKnownVisitor(p))) return true;
+      return String(value ?? '').trim() !== '';
+    })
+    .test('alamat-min', 'Alamat minimal 5 karakter', (value) => {
+      const text = String(value ?? '').trim();
+      return text === '' || text.length >= 5;
+    }),
+  noWhatsapp: Yup.string()
+    .required('Nomor WhatsApp wajib diisi')
+    .matches(/^(\+62|62|0)8\d{8,12}$/, 'Nomor tidak valid, contoh: 081234567890'),
+  captcha: Yup.string().required('Centang "Saya bukan robot" terlebih dahulu'),
 });
 
 // Kolom teks yang terhubung ke Formik. Error tampil setelah kolom disentuh.
@@ -104,24 +135,18 @@ function FormTextField({ name, helperText, ...props }) {
 function VisitorFields({ index, visitor, canRemove, onRemove }) {
   const { setFieldValue, errors, touched } = useFormikContext();
   const prefix = `pembesuk.${index}`;
-  const { nik, nikChecked, nikStatus } = visitor;
+  const { nik, nikChecked, nikStatus, namaTersamar } = visitor;
+  const known = isKnownVisitor(visitor);
 
-  // Tahap 3: begitu NIK 16 digit, cek apakah pembesuk pernah terdaftar.
+  // Begitu NIK 16 digit, tanyakan ke server apakah pembesuk pernah terdaftar.
   useEffect(() => {
     if (nik.length !== 16 || nikChecked === nik) return undefined;
 
     const controller = new AbortController();
-    findVisitorByNik(nik, controller.signal)
-      .then((found) => {
+    checkVisitorNik(nik, controller.signal)
+      .then(({ found, maskedName }) => {
         if (controller.signal.aborted) return;
-        if (found) {
-          if (found.nama) setFieldValue(`${prefix}.nama`, found.nama);
-          if (found.noHp) setFieldValue(`${prefix}.noHp`, found.noHp);
-          if (found.alamat) setFieldValue(`${prefix}.alamat`, found.alamat);
-          if (HUBUNGAN.includes(found.hubungan)) {
-            setFieldValue(`${prefix}.hubungan`, found.hubungan);
-          }
-        }
+        setFieldValue(`${prefix}.namaTersamar`, maskedName);
         setFieldValue(`${prefix}.nikStatus`, found ? 'lama' : 'baru');
         setFieldValue(`${prefix}.nikChecked`, nik);
       })
@@ -137,11 +162,7 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
   let nikHelper = `${nik.length}/16 digit`;
   if (nik.length === 16) {
     if (nikChecked !== nik) nikHelper = 'Memeriksa NIK...';
-    else if (nikStatus === 'lama') {
-      nikHelper = 'Pembesuk pernah terdaftar. Data terisi otomatis, mohon periksa kembali.';
-    } else if (nikStatus === 'gagal') {
-      nikHelper = 'Pengecekan NIK gagal. Isi data secara manual.';
-    }
+    else if (nikStatus === 'gagal') nikHelper = 'Pengecekan NIK gagal. Isi data secara lengkap.';
   }
 
   const photoError = (field) =>
@@ -157,7 +178,7 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
           mb: 2,
         }}
       >
-        <Typography fontWeight={700}>Pembesuk {index + 1}</Typography>
+        <Typography sx={{ fontWeight: 700 }}>Pembesuk {index + 1}</Typography>
         {canRemove && (
           <IconButton
             aria-label={`Hapus pembesuk ${index + 1}`}
@@ -171,25 +192,32 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
 
       <Stack spacing={2}>
         <FormTextField
+          name={`${prefix}.nama`}
+          label="Nama lengkap"
+          placeholder="Sesuai KTP"
+          autoComplete="off"
+          helperText={known ? 'Tidak wajib untuk pembesuk yang sudah terdaftar' : undefined}
+        />
+
+        <FormTextField
           name={`${prefix}.nik`}
           label="NIK"
+          placeholder="16 digit angka"
           autoComplete="off"
-          inputProps={{ inputMode: 'numeric', maxLength: 16 }}
+          slotProps={{ htmlInput: { inputMode: 'numeric', maxLength: 16 } }}
           helperText={nikHelper}
           onChange={(e) =>
             setFieldValue(`${prefix}.nik`, e.target.value.replace(/\D/g, '').slice(0, 16))
           }
         />
-        <FormTextField name={`${prefix}.nama`} label="Nama lengkap" autoComplete="off" />
-        <FormTextField
-          name={`${prefix}.noHp`}
-          label="Nomor HP"
-          autoComplete="off"
-          inputProps={{ inputMode: 'tel' }}
-          onChange={(e) =>
-            setFieldValue(`${prefix}.noHp`, e.target.value.replace(/[^\d+]/g, '').slice(0, 15))
-          }
-        />
+
+        {known && (
+          <Alert severity="success">
+            Pembesuk sudah terdaftar{namaTersamar ? ` atas nama ${namaTersamar}` : ''}. Foto KTP
+            tidak perlu diambil lagi. Cukup ambil foto selfie terbaru.
+          </Alert>
+        )}
+
         <FormTextField select name={`${prefix}.hubungan`} label="Hubungan dengan tahanan">
           {HUBUNGAN.map((h) => (
             <MenuItem key={h} value={h}>
@@ -197,22 +225,32 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
             </MenuItem>
           ))}
         </FormTextField>
-        <FormTextField name={`${prefix}.alamat`} label="Alamat" multiline minRows={2} />
 
-        <PhotoField
-          label="Foto KTP"
-          capture="environment"
-          value={visitor.fotoKtp}
-          error={photoError('fotoKtp')}
-          onChange={(blob) => setFieldValue(`${prefix}.fotoKtp`, blob)}
-        />
-        <PhotoField
-          label="Foto pembesuk (wajah)"
-          capture="user"
-          value={visitor.fotoPembesuk}
-          error={photoError('fotoPembesuk')}
-          onChange={(blob) => setFieldValue(`${prefix}.fotoPembesuk`, blob)}
-        />
+        {/* Foto KTP dan selfie berdampingan. Pembesuk lama: hanya selfie. */}
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: known ? '1fr' : '1fr 1fr',
+            gap: 1.5,
+          }}
+        >
+          {!known && (
+            <PhotoField
+              label="Foto KTP"
+              capture="environment"
+              value={visitor.fotoKtp}
+              error={photoError('fotoKtp')}
+              onChange={(blob) => setFieldValue(`${prefix}.fotoKtp`, blob)}
+            />
+          )}
+          <PhotoField
+            label="Foto selfie terbaru"
+            capture="user"
+            value={visitor.fotoPembesuk}
+            error={photoError('fotoPembesuk')}
+            onChange={(blob) => setFieldValue(`${prefix}.fotoPembesuk`, blob)}
+          />
+        </Box>
       </Stack>
     </Paper>
   );
@@ -220,19 +258,28 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
 
 export default function VisitorDataForm({ onSubmit }) {
   const [initialValues] = useState(() => ({
-    tahanan: '',
+    tahananId: null, // terisi kalau dipilih dari saran
+    tahananNama: '',
     pembesuk: [emptyVisitor()],
+    alamat: '',
+    noWhatsapp: '',
+    captcha: initialCaptcha(),
   }));
+  // Naik 1 setiap kali kirim gagal: token CAPTCHA hanya sekali pakai, jadi kotaknya dimuat ulang.
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   return (
     <Formik
       initialValues={initialValues}
       validationSchema={schema}
-      onSubmit={async (values) => {
+      onSubmit={async (values, { setFieldValue }) => {
         await onSubmit(values);
+        // Kalau berhasil, halaman berganti. Kalau gagal, pembesuk harus mencentang ulang.
+        setCaptchaKey((k) => k + 1);
+        setFieldValue('captcha', initialCaptcha(), false);
       }}
     >
-       {({ values, isSubmitting }) => (
+      {({ values, errors, touched, isSubmitting, setFieldValue, setFieldTouched }) => (
         <Form noValidate>
           {/* Selama mengirim, seluruh isian dikunci. */}
           <Box
@@ -241,11 +288,15 @@ export default function VisitorDataForm({ onSubmit }) {
             sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}
           >
             <Stack spacing={2}>
-             <FormTextField
-                name="tahanan"
-                label="Nama tahanan yang dibesuk"
-                autoComplete="off"
-                helperText="Tulis sesuai nama asli tahanan"
+              <PrisonerSearch
+                id={values.tahananId}
+                nama={values.tahananNama}
+                onChange={({ id, nama }) => {
+                  setFieldValue('tahananId', id);
+                  setFieldValue('tahananNama', nama);
+                }}
+                onBlur={() => setFieldTouched('tahananNama', true)}
+                error={touched.tahananNama ? errors.tahananNama : undefined}
               />
 
               <FieldArray name="pembesuk">
@@ -272,9 +323,43 @@ export default function VisitorDataForm({ onSubmit }) {
                         ? ` (maksimal ${MAX_VISITORS})`
                         : ''}
                     </Button>
+                    <Typography
+                      variant="body2"
+                      align="center"
+                      sx={{ color: 'text.secondary' }}
+                    >
+                      Jumlah pembesuk: {values.pembesuk.length} dari maksimal {MAX_VISITORS}.
+                      Pembesuk 2 sampai {MAX_VISITORS} tidak wajib diisi.
+                    </Typography>
                   </Stack>
                 )}
               </FieldArray>
+
+              <FormTextField
+                name="alamat"
+                label="Alamat"
+                placeholder="Alamat lengkap"
+                multiline
+                minRows={2}
+              />
+
+              <FormTextField
+                name="noWhatsapp"
+                label="Nomor WhatsApp"
+                placeholder="08xxxxxxxxxx"
+                autoComplete="off"
+                slotProps={{ htmlInput: { inputMode: 'tel' } }}
+                helperText="Informasi persetujuan kunjungan akan dikirim ke nomor ini"
+                onChange={(e) =>
+                  setFieldValue('noWhatsapp', e.target.value.replace(/[^\d+]/g, '').slice(0, 15))
+                }
+              />
+
+              <CaptchaField
+                key={captchaKey}
+                onChange={(token) => setFieldValue('captcha', token)}
+                error={touched.captcha ? errors.captcha : undefined}
+              />
 
               <Button
                 type="submit"
