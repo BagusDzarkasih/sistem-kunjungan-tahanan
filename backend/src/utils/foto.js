@@ -20,6 +20,16 @@ export async function simpanFoto(subfolder, buf, ekstensi) {
   return `${subfolder}/${nama}`;
 }
 
+// Mengubah path relatif dari database menjadi lokasi lengkap di disk.
+// Mengembalikan null kalau path kosong atau mencoba keluar dari folder uploads.
+export function lokasiFoto(pathRelatif) {
+  if (!pathRelatif) return null;
+  const utama = folderUtama();
+  const lengkap = path.resolve(utama, pathRelatif);
+  if (!lengkap.startsWith(utama + path.sep)) return null;
+  return lengkap;
+}
+
 export async function hapusFoto(pathRelatif) {
   if (!pathRelatif) return;
   const utama = folderUtama();
