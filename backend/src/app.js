@@ -11,6 +11,8 @@ import fotoRoutes from './routes/foto.routes.js';
 
 const app = express();
 
+app.set('trust proxy', Number(process.env.TRUST_PROXY) || 0);
+
 app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGIN }));
 app.use(express.json());

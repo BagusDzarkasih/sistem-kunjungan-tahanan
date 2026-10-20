@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { verifyToken } from '../middleware/auth.middleware.js';
 import validate from '../middleware/validate.js';
+import { batasCekNik } from '../middleware/rateLimit.js';
 import {
   idRules, listRules, pembesukRules, cekNikRules,
 } from '../validators/pembesuk.validator.js';
@@ -11,8 +12,8 @@ import {
 
 const router = Router();
 
-// PUBLIK (form pembesuk). Harus di atas verifyToken dan di atas '/:id'.
-router.post('/cek-nik', cekNikRules, validate, cekNik);
+// PUBLIK (form pembesuk), dibatasi jumlah request. Harus di atas verifyToken dan di atas '/:id'.
+router.post('/cek-nik', batasCekNik, cekNikRules, validate, cekNik);
 
 // Semua endpoint di bawah ini wajib login (admin dan petugas)
 router.use(verifyToken);
