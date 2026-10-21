@@ -123,3 +123,52 @@ export async function detail(req, res) {
     serverError(res, err);
   }
 }
+
+const sudahDiproses = (res) =>
+  res.status(409).json({
+    kode: 'SUDAH_DIPROSES',
+    pesan: 'Kunjungan sudah diproses sebelumnya',
+  });
+
+// Setujui dan tolak berbagi logika yang sama. UPDATE memakai "AND status = 'menunggu'"
+// sehingga pengecekan dan perubahan terjadi dalam satu langkah (aman kalau dua petugas
+// menekan tombol bersamaan: hanya satu yang berhasil).
+async function proses(req, res, statusBaru, alasan) {
+  const id = Number(req.params.id);
+  try {
+    const [hasil] = await pool.query(
+      `UPDATE kunjungan
+       SET status = ?, alasan_penolakan = ?, diproses_oleh = ?, diproses_pada = NOW()
+       WHERE id = ? AND status = 'menunggu'`,
+      [statusBaru, alasan, req.user.id, id]
+    );
+
+    if (hasil.affectedRows === 0) {
+      // Tidak ada yang berubah: datanya tidak ada, atau sudah pernah diproses
+      const [ada] = await pool.query('SELECT id FROM kunjungan WHERE id = ?', [id]);
+      return ada[0] ? sudahDiproses(res) : tidakDitemukan(res);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT id, no_urut, status, alasan_penolakan, diproses_pada
+       FROM kunjungan WHERE id = ?`,
+      [id]
+    );
+    const k = rows[0];
+    const balasan = { id: k.id, no_urut: k.no_urut, status: k.status, diproses_pada: k.diproses_pada };
+    if (statusBaru === 'ditolak') balasan.alasan_penolakan = k.alasan_penolakan;
+    res.json({ kunjungan: balasan });
+  } catch (err) {
+    serverError(res, err);
+  }
+}
+
+// PATCH /api/kunjungan/:id/setujui (tanpa body)
+export function setujui(req, res) {
+  return proses(req, res, 'disetujui', null);
+}
+
+// PATCH /api/kunjungan/:id/tolak (body: { alasan })
+export function tolak(req, res) {
+  return proses(req, res, 'ditolak', req.body.alasan);
+}

@@ -4,9 +4,9 @@ import { verifyToken, requireRole } from '../middleware/auth.middleware.js';
 import { batasKunjungan } from '../middleware/rateLimit.js';
 import { unggahFotoKunjungan } from '../middleware/upload.js';
 import { parseData, kunjunganRules } from '../validators/kunjungan.validator.js';
-import { idRules, daftarRules } from '../validators/kunjunganPanel.validator.js';
+import { idRules, daftarRules, tolakRules } from '../validators/kunjunganPanel.validator.js';
 import { buat } from '../controllers/kunjungan.controller.js';
-import { daftar, detail } from '../controllers/kunjunganPanel.controller.js';
+import { daftar, detail, setujui, tolak } from '../controllers/kunjunganPanel.controller.js';
 
 const router = Router();
 
@@ -19,6 +19,7 @@ router.use(verifyToken, requireRole('admin', 'petugas'));
 
 router.get('/', daftarRules, validate, daftar);
 router.get('/:id', idRules, validate, detail);
-// Tahap B: PATCH /:id/setujui dan PATCH /:id/tolak ditambahkan di sini.
+router.patch('/:id/setujui', idRules, validate, setujui);
+router.patch('/:id/tolak', idRules, tolakRules, validate, tolak);
 
 export default router;

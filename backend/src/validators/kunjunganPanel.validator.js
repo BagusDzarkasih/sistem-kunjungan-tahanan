@@ -1,4 +1,4 @@
-import { query, param } from 'express-validator';
+import { query, param, body } from 'express-validator';
 
 const STATUS = ['menunggu', 'disetujui', 'ditolak', 'kedaluwarsa'];
 const FORMAT_TANGGAL = { format: 'YYYY-MM-DD', strictMode: true };
@@ -39,4 +39,14 @@ export const daftarRules = [
     .optional({ checkFalsy: true })
     .isLength({ max: 100 })
     .withMessage('q maksimal 100 karakter'),
+];
+
+export const tolakRules = [
+  body('alasan')
+    .isString()
+    .withMessage('alasan wajib berupa teks')
+    .bail()
+    .trim()
+    .isLength({ min: 3, max: 255 })
+    .withMessage('alasan harus 3 sampai 255 karakter'),
 ];
