@@ -8,3 +8,13 @@ export const bulanRules = [
     .matches(/^20\d{2}-(0[1-9]|1[0-2])$/)
     .withMessage('bulan harus berformat YYYY-MM (tahun 2000 sampai 2099), contoh 2026-10'),
 ];
+
+export const eksporRules = [
+  ...bulanRules,
+  query('format')
+    .isString()
+    .withMessage('format wajib diisi: pdf atau xlsx')
+    .bail()
+    .isIn(['pdf', 'xlsx'])
+    .withMessage('format harus pdf atau xlsx'),
+];
