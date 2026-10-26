@@ -1,6 +1,6 @@
 // Formulir pendaftaran kunjungan, urutannya:
 // nama tahanan -> pembesuk 1 sampai 4 (nama, NIK, hubungan, foto KTP, selfie)
-// -> alamat (sekali) -> nomor WhatsApp (sekali) -> CAPTCHA -> kirim.
+// -> alamat (sekali) -> nomor WhatsApp (sekali) -> kirim.
 // Pembesuk lama (NIK sudah terdaftar): foto KTP tidak diminta lagi.
 import { useEffect, useState } from 'react';
 import { Formik, Form, FieldArray, getIn, useFormikContext } from 'formik';
@@ -19,11 +19,9 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
-import CaptchaField from './CaptchaField';
 import PhotoField from './PhotoField';
 import PrisonerSearch from './PrisonerSearch';
 import { checkVisitorNik, isKnownVisitor } from '../services/public.service';
-import { CAPTCHA_DEV_BYPASS, CAPTCHA_DEV_TOKEN } from '../utils/captcha';
 
 const MAX_VISITORS = 4;
 
@@ -37,9 +35,6 @@ const HUBUNGAN = [
   'Kuasa hukum',
   'Lainnya',
 ];
-
-// Nilai awal kolom CAPTCHA: kosong, kecuali mode lewati saat pengembangan.
-const initialCaptcha = () => (CAPTCHA_DEV_BYPASS ? CAPTCHA_DEV_TOKEN : '');
 
 // id dipakai sebagai key React supaya data tidak tertukar saat pembesuk dihapus.
 let seq = 0;
@@ -110,7 +105,6 @@ const schema = Yup.object({
   noWhatsapp: Yup.string()
     .required('Nomor WhatsApp wajib diisi')
     .matches(/^(\+62|62|0)8\d{8,12}$/, 'Nomor tidak valid, contoh: 081234567890'),
-  captcha: Yup.string().required('Centang "Saya bukan robot" terlebih dahulu'),
 });
 
 // Kolom teks yang terhubung ke Formik. Error tampil setelah kolom disentuh.
@@ -263,20 +257,14 @@ export default function VisitorDataForm({ onSubmit }) {
     pembesuk: [emptyVisitor()],
     alamat: '',
     noWhatsapp: '',
-    captcha: initialCaptcha(),
   }));
-  // Naik 1 setiap kali kirim gagal: token CAPTCHA hanya sekali pakai, jadi kotaknya dimuat ulang.
-  const [captchaKey, setCaptchaKey] = useState(0);
 
   return (
     <Formik
       initialValues={initialValues}
       validationSchema={schema}
-      onSubmit={async (values, { setFieldValue }) => {
+      onSubmit={async (values) => {
         await onSubmit(values);
-        // Kalau berhasil, halaman berganti. Kalau gagal, pembesuk harus mencentang ulang.
-        setCaptchaKey((k) => k + 1);
-        setFieldValue('captcha', initialCaptcha(), false);
       }}
     >
       {({ values, errors, touched, isSubmitting, setFieldValue, setFieldTouched }) => (
@@ -353,12 +341,6 @@ export default function VisitorDataForm({ onSubmit }) {
                 onChange={(e) =>
                   setFieldValue('noWhatsapp', e.target.value.replace(/[^\d+]/g, '').slice(0, 15))
                 }
-              />
-
-              <CaptchaField
-                key={captchaKey}
-                onChange={(token) => setFieldValue('captcha', token)}
-                error={touched.captcha ? errors.captcha : undefined}
               />
 
               <Button
