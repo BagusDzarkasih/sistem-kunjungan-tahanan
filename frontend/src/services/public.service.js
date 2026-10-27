@@ -1,5 +1,5 @@
 // Pemanggil endpoint publik (tanpa login) untuk form pembesuk.
-// Mengikuti Kontrak API Draf 1, ditambah satu kolom baru: no_whatsapp.
+// Mengikuti Kontrak API Draf 5 (form publik tanpa saran nama tahanan dan tanpa CAPTCHA).
 //
 // Mode data tiruan (mock): HANYA saat npm run dev dan frontend/.env berisi VITE_USE_MOCK=true.
 // Dipakai selagi backend belum jalan. Tidak pernah aktif di hasil npm run build.
@@ -17,13 +17,6 @@ const MOCK_RULES = `1. Pembesuk wajib membawa kartu identitas asli (KTP).
 
 (Data tiruan mode pengembangan, bukan peraturan resmi.)`;
 
-const MOCK_PRISONERS = [
-  { id: 1, nama: 'Budi Santoso' },
-  { id: 2, nama: 'Budi Hartono' },
-  { id: 3, nama: 'Agus Setiawan' },
-  { id: 4, nama: 'Rudi Hermawan' },
-];
-
 // GET /api/peraturan -> teks peraturan untuk pop-up.
 export async function getRules() {
   if (USE_MOCK) {
@@ -32,19 +25,7 @@ export async function getRules() {
   }
   const { data } = await api.get('/peraturan');
   if (typeof data === 'string') return data;
-  return data.peraturan ?? data.nilai ?? '';
-}
-
-// GET /api/tahanan/cari?q=abc -> [{ id, nama }] (minimal 3 huruf, maksimal 10 hasil)
-export async function searchPrisoners(query, signal) {
-  if (USE_MOCK) {
-    await wait(300);
-    const q = query.toLowerCase();
-    return MOCK_PRISONERS.filter((t) => t.nama.toLowerCase().includes(q));
-  }
-  const { data } = await api.get('/tahanan/cari', { params: { q: query }, signal });
-  const list = Array.isArray(data) ? data : data?.data ?? data?.tahanan ?? [];
-  return list.map((t) => ({ id: t.id, nama: t.nama }));
+  return data.teks ?? data.peraturan ?? data.nilai ?? '';
 }
 
 // POST /api/pembesuk/cek-nik, body { nik }
@@ -74,20 +55,18 @@ export const isKnownVisitor = (p) => p.nikStatus === 'lama' && p.nikChecked === 
 //  - bagian "data": teks JSON
 //  - foto_pembesuk_N: selfie, wajib untuk semua pembesuk
 //  - foto_ktp_N: hanya untuk pembesuk baru
-// Hubungan diisi per pembesuk. Alamat dan nomor WhatsApp diisi sekali per kunjungan,
+// Hubungan diisi per pembesuk. Alamat dan nomor HP diisi sekali per kunjungan,
 // lalu disalin ke tiap pembesuk (kontrak meminta alamat dan no_hp per pembesuk).
-export async function submitVisit({ tahanan, alamat, noWhatsapp, tokenCaptcha, pembesuk }) {
+// Nama tahanan selalu diketik pembesuk (tahanan_nama_baru). Server yang menautkannya.
+export async function submitVisit({ tahananNama, alamat, noHp, pembesuk }) {
   const data = {
-    // Dipilih dari saran -> tahanan_id. Diketik sendiri -> tahanan_nama_baru.
-    ...(tahanan.id ? { tahanan_id: tahanan.id } : { tahanan_nama_baru: tahanan.nama.trim() }),
+    tahanan_nama_baru: tahananNama.trim(),
     setuju_peraturan: true,
-    token_captcha: tokenCaptcha,
-    no_whatsapp: noWhatsapp, // tujuan pemberitahuan setuju/tolak
     pembesuk: pembesuk.map((p) => ({
       nik: p.nik,
       nama: p.nama.trim(),
       alamat: alamat.trim(),
-      no_hp: noWhatsapp,
+      no_hp: noHp,
       hubungan: p.hubungan,
     })),
   };

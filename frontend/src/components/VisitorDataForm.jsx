@@ -20,10 +20,9 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import PhotoField from './PhotoField';
-import PrisonerSearch from './PrisonerSearch';
 import { checkVisitorNik, isKnownVisitor } from '../services/public.service';
 
-const MAX_VISITORS = 4;
+const MAX_VISITORS = 20;
 
 const HUBUNGAN = [
   'Suami/Istri',
@@ -102,8 +101,8 @@ const schema = Yup.object({
       const text = String(value ?? '').trim();
       return text === '' || text.length >= 5;
     }),
-  noWhatsapp: Yup.string()
-    .required('Nomor WhatsApp wajib diisi')
+  noHp: Yup.string()
+    .required('Nomor HP wajib diisi')
     .matches(/^(\+62|62|0)8\d{8,12}$/, 'Nomor tidak valid, contoh: 081234567890'),
 });
 
@@ -252,11 +251,10 @@ function VisitorFields({ index, visitor, canRemove, onRemove }) {
 
 export default function VisitorDataForm({ onSubmit }) {
   const [initialValues] = useState(() => ({
-    tahananId: null, // terisi kalau dipilih dari saran
     tahananNama: '',
     pembesuk: [emptyVisitor()],
     alamat: '',
-    noWhatsapp: '',
+    noHp: '',
   }));
 
   return (
@@ -267,7 +265,7 @@ export default function VisitorDataForm({ onSubmit }) {
         await onSubmit(values);
       }}
     >
-      {({ values, errors, touched, isSubmitting, setFieldValue, setFieldTouched }) => (
+            {({ values, isSubmitting, setFieldValue }) => (
         <Form noValidate>
           {/* Selama mengirim, seluruh isian dikunci. */}
           <Box
@@ -276,15 +274,11 @@ export default function VisitorDataForm({ onSubmit }) {
             sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}
           >
             <Stack spacing={2}>
-              <PrisonerSearch
-                id={values.tahananId}
-                nama={values.tahananNama}
-                onChange={({ id, nama }) => {
-                  setFieldValue('tahananId', id);
-                  setFieldValue('tahananNama', nama);
-                }}
-                onBlur={() => setFieldTouched('tahananNama', true)}
-                error={touched.tahananNama ? errors.tahananNama : undefined}
+              <FormTextField
+                name="tahananNama"
+                label="Nama tahanan yang dibesuk"
+                placeholder="Tulis nama lengkap tahanan"
+                autoComplete="off"
               />
 
               <FieldArray name="pembesuk">
@@ -316,8 +310,7 @@ export default function VisitorDataForm({ onSubmit }) {
                       align="center"
                       sx={{ color: 'text.secondary' }}
                     >
-                      Jumlah pembesuk: {values.pembesuk.length} dari maksimal {MAX_VISITORS}.
-                      Pembesuk 2 sampai {MAX_VISITORS} tidak wajib diisi.
+                      Jumlah pembesuk: {values.pembesuk.length} (dihitung otomatis).
                     </Typography>
                   </Stack>
                 )}
@@ -332,14 +325,14 @@ export default function VisitorDataForm({ onSubmit }) {
               />
 
               <FormTextField
-                name="noWhatsapp"
-                label="Nomor WhatsApp"
+                name="noHp"
+                label="Nomor HP"
                 placeholder="08xxxxxxxxxx"
                 autoComplete="off"
                 slotProps={{ htmlInput: { inputMode: 'tel' } }}
-                helperText="Informasi persetujuan kunjungan akan dikirim ke nomor ini"
+                helperText="Nomor yang bisa dihubungi petugas"
                 onChange={(e) =>
-                  setFieldValue('noWhatsapp', e.target.value.replace(/[^\d+]/g, '').slice(0, 15))
+                  setFieldValue('noHp', e.target.value.replace(/[^\d+]/g, '').slice(0, 15))
                 }
               />
 

@@ -89,16 +89,15 @@ export default function VisitorForm() {
     setSubmitError('');
     try {
       const data = await submitVisit({
-        tahanan: { id: values.tahananId, nama: values.tahananNama },
+        tahananNama: values.tahananNama,
         alamat: values.alamat,
-        noWhatsapp: values.noWhatsapp,
-        tokenCaptcha: values.captcha,
+        noHp: values.noHp,
         pembesuk: values.pembesuk,
       });
       const rawNo = data?.no_urut ?? data?.noUrut;
       const record = {
         noUrut: rawNo != null ? String(rawNo).padStart(4, '0') : null,
-        waNumber: values.noWhatsapp,
+        noHp: values.noHp,
         tanggal: dateKey(),
       };
       saveRecord(record);
@@ -180,8 +179,7 @@ export default function VisitorForm() {
               Tanggal besuk: {todayLabel}
             </Typography>
             <Typography sx={{ color: 'text.secondary', mb: 1 }}>
-              Petugas akan memeriksa data Anda. Informasi persetujuan akan dikirim ke WhatsApp{' '}
-              <strong>{done.waNumber}</strong>.
+              Petugas akan memeriksa data Anda. Nomor yang tercatat: <strong>{done.noHp}</strong>.
             </Typography>
             <Typography sx={{ color: 'text.secondary', mb: 3 }}>
               Tunjukkan nomor registrasi ini ke petugas di loket. Nomor ini tetap tampil kalau
