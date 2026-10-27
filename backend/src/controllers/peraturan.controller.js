@@ -17,9 +17,28 @@ export async function ambil(req, res) {
         .json({ kode: 'TIDAK_DITEMUKAN', pesan: 'Peraturan belum diatur' });
     }
 
-    // Jangan di-cache supaya perubahan teks oleh admin langsung tampil
+    // Jangan di-cache supaya perubahan teks oleh admin atau petugas langsung tampil
     res.set('Cache-Control', 'no-store');
     res.json({ teks: rows[0].nilai });
+  } catch (err) {
+    serverError(res, err);
+  }
+}
+
+// PUT /api/peraturan (admin dan petugas): ubah teks peraturan besuk
+export async function ubah(req, res) {
+  try {
+    const { teks } = req.body; // sudah divalidasi dan dirapikan oleh peraturanRules
+
+    // kunci bersifat UNIQUE: kalau barisnya sudah ada diperbarui, kalau belum dibuat
+    await pool.query(
+      `INSERT INTO pengaturan (kunci, nilai) VALUES ('teks_peraturan', ?)
+       ON DUPLICATE KEY UPDATE nilai = VALUES(nilai)`,
+      [teks]
+    );
+
+    res.set('Cache-Control', 'no-store');
+    res.json({ teks });
   } catch (err) {
     serverError(res, err);
   }
