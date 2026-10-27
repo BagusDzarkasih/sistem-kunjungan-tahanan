@@ -25,3 +25,13 @@ export const tahananRules = [
     .notEmpty().withMessage('Nama tahanan wajib diisi')
     .isLength({ min: 3, max: 100 }).withMessage('Nama 3 sampai 100 karakter'),
 ];
+
+export const gabungRules = [
+  body('sumber_id')
+    .isInt({ min: 1 }).withMessage('sumber_id harus bilangan bulat positif'),
+  body('tujuan_id')
+    .isInt({ min: 1 }).withMessage('tujuan_id harus bilangan bulat positif')
+    .bail()
+    .custom((nilai, { req }) => Number(nilai) !== Number(req.body.sumber_id))
+    .withMessage('Tahanan sumber dan tujuan tidak boleh sama'),
+];

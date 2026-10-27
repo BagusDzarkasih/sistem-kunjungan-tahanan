@@ -168,3 +168,67 @@ export async function hapus(req, res) {
     serverError(res, err);
   }
 }
+
+export async function gabung(req, res) {
+  const sumberId = Number(req.body.sumber_id);
+  const tujuanId = Number(req.body.tujuan_id);
+
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    // Kunci kedua baris, diurutkan menurut id supaya dua permintaan bersamaan tidak saling menunggu
+    const [terkunci] = await conn.query(
+      'SELECT id FROM tahanan WHERE id IN (?, ?) ORDER BY id FOR UPDATE',
+      [sumberId, tujuanId]
+    );
+    const sumberAda = terkunci.some((r) => r.id === sumberId);
+    const tujuanAda = terkunci.some((r) => r.id === tujuanId);
+
+    if (!sumberAda || !tujuanAda) {
+      await conn.rollback();
+      return res.status(404).json({
+        kode: 'TIDAK_DITEMUKAN',
+        pesan: !sumberAda
+          ? 'Tahanan sumber tidak ditemukan'
+          : 'Tahanan tujuan tidak ditemukan',
+      });
+    }
+
+    const [pindah] = await conn.query(
+      'UPDATE kunjungan SET tahanan_id = ? WHERE tahanan_id = ?',
+      [tujuanId, sumberId]
+    );
+    await conn.query('DELETE FROM tahanan WHERE id = ?', [sumberId]);
+
+    const [rows] = await conn.query(
+      'SELECT id, nama, status_verifikasi, dibuat_pada FROM tahanan WHERE id = ?',
+      [tujuanId]
+    );
+
+    await conn.commit();
+    res.json({
+      pesan: 'Data tahanan berhasil digabung',
+      tahanan: rows[0],
+      kunjungan_dipindah: pindah.affectedRows,
+    });
+  } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    if (err.code === 'ER_LOCK_DEADLOCK') {
+      return res.status(409).json({
+        kode: 'BENTROK',
+        pesan: 'Terjadi bentrok dengan proses lain, silakan coba lagi',
+      });
+    }
+    serverError(res, err);
+  } finally {
+    if (conn) conn.release();
+  }
+}
