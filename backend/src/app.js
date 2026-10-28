@@ -12,6 +12,7 @@ import peraturanRoutes from './routes/peraturan.routes.js';
 import laporanRoutes from './routes/laporan.routes.js';
 import penggunaRoutes from './routes/pengguna.routes.js';
 import pengaturanRoutes from './routes/pengaturan.routes.js';
+import dashboardRoutes from './routes/dashboard.routes.js';
 
 const app = express();
 
@@ -40,6 +41,8 @@ app.use('/api/peraturan', peraturanRoutes);
 app.use('/api/laporan', laporanRoutes);
 app.use('/api/pengguna', penggunaRoutes);
 app.use('/api/pengaturan', pengaturanRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+
 app.use((req, res) => {
   res.status(404).json({ kode: 'TIDAK_DITEMUKAN', pesan: 'Alamat tidak ditemukan' });
 });
