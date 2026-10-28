@@ -11,8 +11,14 @@ const SQL = {
   pembesuk: 'SELECT foto_pembesuk AS path FROM detail_kunjungan WHERE id = ?',
 };
 
-const tidakDitemukan = (res) =>
-  res.status(404).json({ kode: 'TIDAK_DITEMUKAN', pesan: 'Belum Punya Foto KTP' });
+const tidakDitemukan = (res, jenis) =>
+  res.status(404).json({
+    kode: 'TIDAK_DITEMUKAN',
+    pesan:
+      jenis === 'pembesuk'
+        ? 'Foto pembesuk tidak ada atau sudah dihapus sesuai masa simpan'
+        : 'Belum Punya Foto KTP',
+  });
 
 const serverError = (res, err) => {
   console.error(err);
@@ -26,10 +32,10 @@ export async function tampilkan(req, res) {
   try {
     const [rows] = await pool.query(SQL[jenis], [id]);
     const lokasi = lokasiFoto(rows[0]?.path);
-    if (!lokasi) return tidakDitemukan(res);
+    if (!lokasi) return tidakDitemukan(res, jenis);
 
     const mime = MIME[path.extname(lokasi).toLowerCase()];
-    if (!mime) return tidakDitemukan(res);
+    if (!mime) return tidakDitemukan(res, jenis);
 
     res.set({
       'Content-Type': mime,
@@ -41,7 +47,7 @@ export async function tampilkan(req, res) {
     return res.sendFile(lokasi, { etag: false, lastModified: false }, (err) => {
       if (!err || res.headersSent) return;
       // File tercatat di database tetapi hilang dari disk
-      if (err.code === 'ENOENT' || err.status === 404) return tidakDitemukan(res);
+      if (err.code === 'ENOENT' || err.status === 404) return tidakDitemukan(res, jenis);
       return serverError(res, err);
     });
   } catch (err) {
