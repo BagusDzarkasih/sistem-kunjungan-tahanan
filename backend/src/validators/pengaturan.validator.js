@@ -11,5 +11,5 @@ const bulatRule = (field, min, max) =>
 
 export const pengaturanRules = [
   bulatRule('kedaluwarsa_jam', 1, 720),
-  bulatRule('masa_simpan_foto_bulan', 1, 120),
+  bulatRule('masa_simpan_foto_bulan', 3, 120),
 ];
