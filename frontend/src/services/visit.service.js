@@ -79,3 +79,30 @@ export async function getVisits({ status, q, dari, sampai, page = 1, limit = 10 
   const { data } = await api.get('/kunjungan', { params, signal });
   return normalizeList(data, limit);
 } 
+
+// GET /api/kunjungan/:id -> { kunjungan: {...}, pembesuk: [...] }
+export async function getVisitDetail(id, signal) {
+  const { data } = await api.get(`/kunjungan/${id}`, { signal });
+  return { visit: data.kunjungan, visitors: data.pembesuk ?? [] };
+}
+
+// PATCH /api/kunjungan/:id/setujui (tanpa body). Hanya untuk status menunggu.
+export async function approveVisit(id) {
+  const { data } = await api.patch(`/kunjungan/${id}/setujui`);
+  return data.kunjungan;
+}
+
+// PATCH /api/kunjungan/:id/tolak, body { alasan } (3 sampai 255 karakter).
+export async function rejectVisit(id, alasan) {
+  const { data } = await api.patch(`/kunjungan/${id}/tolak`, { alasan });
+  return data.kunjungan;
+}
+
+// GET /api/foto/:jenis/:id. Foto butuh token, jadi tidak bisa dipasang langsung di <img src>.
+// Diambil lewat axios (token ikut terkirim) sebagai blob.
+//   jenis 'ktp'       -> id = pembesuk_id
+//   jenis 'pembesuk'  -> id = detail_id
+export async function getPhotoBlob(type, id, signal) {
+  const { data } = await api.get(`/foto/${type}/${id}`, { responseType: 'blob', signal });
+  return data;
+}

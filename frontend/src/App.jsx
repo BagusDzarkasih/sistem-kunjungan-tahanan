@@ -9,6 +9,7 @@ import StaffLayout from './components/StaffLayout';
 import ComingSoon from './pages/ComingSoon';
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
+import VisitDetail from './pages/VisitDetail';
 import VisitList from './pages/VisitList';
 import VisitorForm from './pages/VisitorForm';
 import ProtectedRoute from './routes/ProtectedRoute';
@@ -25,7 +26,7 @@ export default function App() {
         <Route path="/staff" element={<StaffLayout />}>
           <Route index element={<Navigate to="visits" replace />} />
           <Route path="visits" element={<VisitList />} />
-          <Route path="visits/:id" element={<ComingSoon title="Detail kunjungan" />} />
+          <Route path="visits/:id" element={<VisitDetail />} />
           <Route path="prisoners" element={<ComingSoon title="Tahanan" />} />
           <Route path="visitors" element={<ComingSoon title="Pembesuk" />} />
           <Route path="reports" element={<ComingSoon title="Laporan" />} />
