@@ -33,7 +33,7 @@ export default function Login() {
   const [errorMessage, setErrorMessage] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const destination = location.state?.from || '/staff/visits';
+  const destination = location.state?.from || '/staff/dashboard';
 
   const formik = useFormik({
     initialValues: { username: '', password: '' },
@@ -52,7 +52,7 @@ export default function Login() {
 
   // Sudah login? Tidak perlu melihat halaman login lagi.
   if (!checking && user) {
-    return <Navigate to="/staff/visits" replace />;
+    return <Navigate to="/staff/dashboard" replace />;
   }
 
   const hasError = (name) => formik.touched[name] && Boolean(formik.errors[name]);

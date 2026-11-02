@@ -1,8 +1,8 @@
-// Halaman petugas: detail kunjungan (wireframe 6).
-// Data kunjungan, pembesuk satu per satu dengan foto KTP dan foto wajah berdampingan,
+// Halaman petugas: detail kunjungan (wireframe 5).
+// Data kunjungan, semua pembesuk dengan foto KTP dan foto pembesuk berdampingan,
 // lalu tombol Setujui dan Tolak (hanya untuk status menunggu).
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -15,15 +15,13 @@ import {
   DialogContentText,
   DialogTitle,
   Divider,
-  IconButton,
+  Link,
   Paper,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AuthPhoto from '../components/AuthPhoto';
 import StatusChip from '../components/StatusChip';
 import { getErrorMessage } from '../services/api';
@@ -58,7 +56,6 @@ export default function VisitDetail() {
   const navigate = useNavigate();
   const [tick, setTick] = useState(0); // naik untuk memuat ulang
   const [result, setResult] = useState({ key: '', visit: null, visitors: [], error: '' });
-  const [index, setIndex] = useState(0); // pembesuk yang sedang dilihat
   const [confirm, setConfirm] = useState(null); // 'setujui' | 'tolak' | null
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState('');
@@ -89,7 +86,6 @@ export default function VisitDetail() {
 
   const loading = result.key !== queryKey;
   const { visit, visitors } = result;
-  const current = visitors[Math.min(index, Math.max(visitors.length - 1, 0))];
 
   const closeDialog = () => {
     if (saving) return;
@@ -173,7 +169,13 @@ export default function VisitDetail() {
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Info label="Tanggal besuk">{formatDate(visit.tanggal)}</Info>
             <Info label="Tahanan">
-              {visit.tahanan?.nama}
+              {visit.tahanan?.id ? (
+                <Link component={RouterLink} to={`/staff/prisoners/${visit.tahanan.id}`}>
+                  {visit.tahanan.nama}
+                </Link>
+              ) : (
+                visit.tahanan?.nama
+              )}
               {visit.tahanan?.status_verifikasi === 'belum' && (
                 <Box sx={{ mt: 0.5 }}>
                   <Chip
@@ -190,7 +192,7 @@ export default function VisitDetail() {
               {visit.setuju_peraturan ? `Ya, ${formatDateTime(visit.waktu_setuju)}` : 'Belum'}
             </Info>
             <Info label="Didaftarkan">{formatDateTime(visit.dibuat_pada)}</Info>
-            {visit.didaftarkan_oleh && <Info label="Didaftarkan oleh">{visit.didaftarkan_oleh}</Info>}
+            <Info label="Didaftarkan oleh">{visit.didaftarkan_oleh || 'Pembesuk sendiri'}</Info>
             {visit.status !== 'menunggu' && visit.diproses_pada && (
               <Info label="Diproses">
                 {formatDateTime(visit.diproses_pada)}
@@ -202,47 +204,26 @@ export default function VisitDetail() {
             )}
           </Paper>
 
-          {current && (
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  mb: 1,
-                }}
-              >
-                <Typography sx={{ fontWeight: 700 }}>
-                  Pembesuk {Math.min(index, visitors.length - 1) + 1} dari {visitors.length}
-                </Typography>
-                {visitors.length > 1 && (
-                  <Box>
-                    <IconButton
-                      aria-label="Pembesuk sebelumnya"
-                      disabled={index <= 0}
-                      onClick={() => setIndex((i) => i - 1)}
-                    >
-                      <ChevronLeftIcon />
-                    </IconButton>
-                    <IconButton
-                      aria-label="Pembesuk berikutnya"
-                      disabled={index >= visitors.length - 1}
-                      onClick={() => setIndex((i) => i + 1)}
-                    >
-                      <ChevronRightIcon />
-                    </IconButton>
-                  </Box>
-                )}
-              </Box>
+          <Typography variant="h6" component="h2">
+            Pembesuk ({visitors.length})
+          </Typography>
+
+          {visitors.map((v, i) => (
+            <Paper key={v.detail_id} variant="outlined" sx={{ p: 2 }}>
+              <Typography sx={{ fontWeight: 700, mb: 1 }}>
+                {i + 1}.{' '}
+                <Link component={RouterLink} to={`/staff/visitors/${v.pembesuk_id}`}>
+                  {v.nama}
+                </Link>{' '}
+                ({v.hubungan})
+              </Typography>
               <Divider sx={{ mb: 1.5 }} />
 
-              <Info label="Nama">{current.nama}</Info>
-              <Info label="NIK">{current.nik}</Info>
-              <Info label="Hubungan">{current.hubungan}</Info>
-              <Info label="Alamat">{current.alamat}</Info>
-              <Info label="No HP">{current.no_hp}</Info>
+              <Info label="NIK">{v.nik}</Info>
+              <Info label="Alamat">{v.alamat}</Info>
+              <Info label="No HP">{v.no_hp}</Info>
 
-              {/* Foto KTP dan foto wajah berdampingan, supaya mudah dicocokkan petugas. */}
+              {/* Foto KTP dan foto pembesuk berdampingan (desktop), bertumpuk (HP). */}
               <Box
                 sx={{
                   display: 'grid',
@@ -251,8 +232,8 @@ export default function VisitDetail() {
                   mt: 2,
                 }}
               >
-                {current.punya_foto_ktp ? (
-                  <AuthPhoto type="ktp" id={current.pembesuk_id} alt="Foto KTP" />
+                {v.punya_foto_ktp ? (
+                  <AuthPhoto type="ktp" id={v.pembesuk_id} alt="Foto KTP" />
                 ) : (
                   <Box>
                     <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
@@ -263,17 +244,34 @@ export default function VisitDetail() {
                     </Typography>
                   </Box>
                 )}
-                <AuthPhoto type="pembesuk" id={current.detail_id} alt="Foto wajah saat kunjungan" />
+                <AuthPhoto
+                  type="pembesuk"
+                  id={v.detail_id}
+                  alt="Foto pembesuk (kunjungan ini)"
+                  missingText="Foto sudah dihapus sesuai masa simpan"
+                />
               </Box>
             </Paper>
-          )}
+          ))}
 
           {visit.status === 'menunggu' && (
-            <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1.5} sx={{ justifyContent: 'flex-end' }}>
-              <Button variant="outlined" color="error" onClick={() => setConfirm('tolak')}>
+            <Stack
+              direction={{ xs: 'column-reverse', sm: 'row' }}
+              spacing={1.5}
+              sx={{
+                justifyContent: 'flex-end',
+                // HP: tombol aksi menempel di bawah layar
+                position: { xs: 'sticky', sm: 'static' },
+                bottom: 0,
+                bgcolor: 'background.default',
+                py: 1.5,
+                zIndex: 1,
+              }}
+            >
+              <Button variant="outlined" color="error" sx={{ minHeight: 44 }} onClick={() => setConfirm('tolak')}>
                 Tolak
               </Button>
-              <Button variant="contained" color="success" onClick={() => setConfirm('setujui')}>
+              <Button variant="contained" color="success" sx={{ minHeight: 44 }} onClick={() => setConfirm('setujui')}>
                 Setujui
               </Button>
             </Stack>

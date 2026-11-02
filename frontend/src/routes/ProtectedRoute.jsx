@@ -1,10 +1,11 @@
 // Penjaga halaman petugas/admin.
 //  - belum login            -> diarahkan ke /login
-//  - role tidak sesuai      -> diarahkan ke halaman utama petugas
+//  - role tidak sesuai      -> halaman penolakan (403)
 // Pemakaian: <ProtectedRoute allowedRoles={['admin']}> ... </ProtectedRoute>
 import { Box, CircularProgress } from '@mui/material';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import useAuth from '../context/useAuth';
+import Forbidden from '../pages/Forbidden';
 
 export default function ProtectedRoute({ allowedRoles }) {
   const { user, checking } = useAuth();
@@ -24,7 +25,7 @@ export default function ProtectedRoute({ allowedRoles }) {
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/staff/visits" replace />;
+    return <Forbidden />;
   }
 
   return <Outlet />;
