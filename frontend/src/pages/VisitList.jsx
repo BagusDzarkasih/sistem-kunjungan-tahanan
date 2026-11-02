@@ -1,45 +1,50 @@
-// Halaman petugas: daftar kunjungan (wireframe 5).
-// Tab status, pencarian, rentang tanggal, tabel, dan halaman. Memuat ulang otomatis tiap 30 detik.
+// Halaman petugas: daftar kunjungan (wireframe 4).
+// Filter status (bisa dibuka dari tautan ?status=menunggu), pencarian, rentang tanggal.
+// Desktop: tabel. HP: kartu dengan panel filter yang bisa dilipat.
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Box,
   Button,
+  Chip,
+  Collapse,
   Divider,
   IconButton,
   InputAdornment,
   LinearProgress,
+  MenuItem,
   Paper,
   Stack,
-  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Tabs,
   TextField,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import StatusChip from '../components/StatusChip';
 import { getVisits } from '../services/visit.service';
 
-const LIMIT = 10;
+const LIMIT = 20;
 
-const TABS = [
+const STATUS_VALUES = ['menunggu', 'disetujui', 'ditolak', 'kedaluwarsa'];
+const STATUS_OPTIONS = [
+  { value: '', label: 'Semua status' },
   { value: 'menunggu', label: 'Menunggu' },
   { value: 'disetujui', label: 'Disetujui' },
   { value: 'ditolak', label: 'Ditolak' },
   { value: 'kedaluwarsa', label: 'Kedaluwarsa' },
 ];
 
-// Alamat halaman detail kunjungan (dikerjakan di tahap berikutnya).
 const detailPath = (id) => `/staff/visits/${id}`;
 
 // 2026-10-12 -> 12-10-2026
@@ -51,23 +56,46 @@ function getErrorMessage(err) {
   return data?.pesan ?? data?.message ?? 'Daftar kunjungan gagal dimuat.';
 }
 
+// Lencana kecil untuk nama tahanan yang baru diketik pembesuk dan belum dicek petugas.
+function UnverifiedBadge() {
+  return (
+    <Chip
+      size="small"
+      color="warning"
+      variant="outlined"
+      label="belum diverifikasi"
+      sx={{ ml: 1 }}
+    />
+  );
+}
+
 export default function VisitList() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState('menunggu');
+  const isMobile = useMediaQuery('(max-width:767px)');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Status diambil dari alamat halaman, jadi tautan dari Dashboard langsung terisi.
+  const fromUrl = searchParams.get('status');
+  const status = STATUS_VALUES.includes(fromUrl) ? fromUrl : '';
+
   const [search, setSearch] = useState(''); // isi kolom cari
   const [q, setQ] = useState(''); // kata kunci yang dipakai mencari (setelah jeda)
   const [dari, setDari] = useState('');
   const [sampai, setSampai] = useState('');
-  const [page, setPage] = useState(1);
+  const [pageState, setPageState] = useState({ status, page: 1 });
   const [tick, setTick] = useState(0); // naik untuk memuat ulang
-  const [waiting, setWaiting] = useState(null);
-  const [result, setResult] = useState({ key: '', rows: [], totalPages: 1, error: '' });
+  const [showFilter, setShowFilter] = useState(false); // panel filter di HP
+  const [result, setResult] = useState({ key: '', rows: [], total: 0, totalPages: 1, error: '' });
+
+  // Ganti status -> kembali ke halaman 1 (page dianggap 1 kalau statusnya berbeda).
+  const page = pageState.status === status ? pageState.page : 1;
+  const setPage = (p) => setPageState({ status, page: p });
 
   // Mencari 400 ms setelah berhenti mengetik.
   useEffect(() => {
     const timer = setTimeout(() => {
       setQ(search.trim());
-      setPage(1);
+      setPageState((s) => ({ ...s, page: 1 }));
     }, 400);
     return () => clearTimeout(timer);
   }, [search]);
@@ -78,76 +106,101 @@ export default function VisitList() {
     return () => clearInterval(timer);
   }, []);
 
-  // Jumlah kunjungan menunggu untuk label tab.
-  useEffect(() => {
-    const controller = new AbortController();
-    getVisits({ status: 'menunggu', page: 1, limit: 1 }, controller.signal)
-      .then((r) => {
-        if (!controller.signal.aborted) setWaiting(r.total);
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, [tick]);
-
-  // Daftar kunjungan sesuai tab, pencarian, tanggal, dan halaman.
   const queryKey = [status, q, dari, sampai, page].join('|');
   useEffect(() => {
     const controller = new AbortController();
     getVisits({ status, q, dari, sampai, page, limit: LIMIT }, controller.signal)
       .then((r) => {
         if (controller.signal.aborted) return;
-        setResult({ key: queryKey, rows: r.rows, totalPages: r.totalPages, error: '' });
+        setResult({
+          key: queryKey,
+          rows: r.rows,
+          total: r.total,
+          totalPages: r.totalPages,
+          error: '',
+        });
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
-        setResult({ key: queryKey, rows: [], totalPages: 1, error: getErrorMessage(err) });
+        setResult({ key: queryKey, rows: [], total: 0, totalPages: 1, error: getErrorMessage(err) });
       });
     return () => controller.abort();
   }, [status, q, dari, sampai, page, queryKey, tick]);
 
   const loading = result.key !== queryKey;
-  const hasFilter = Boolean(search || dari || sampai);
+  const hasFilter = Boolean(search || dari || sampai || status);
+
+  const changeStatus = (value) => {
+    setSearchParams(value ? { status: value } : {}, { replace: true });
+  };
 
   const resetFilter = () => {
     setSearch('');
     setQ('');
     setDari('');
     setSampai('');
-    setPage(1);
+    setSearchParams({}, { replace: true });
+    setPageState({ status: '', page: 1 });
   };
+
+  const from = result.total === 0 ? 0 : (page - 1) * LIMIT + 1;
+  const to = Math.min(page * LIMIT, result.total);
+
+  const statusField = (
+    <TextField
+      select
+      size="small"
+      label="Status"
+      value={status}
+      onChange={(e) => changeStatus(e.target.value)}
+      sx={{ minWidth: 160 }}
+    >
+      {STATUS_OPTIONS.map((o) => (
+        <MenuItem key={o.value} value={o.value}>
+          {o.label}
+        </MenuItem>
+      ))}
+    </TextField>
+  );
+
+  const dateFields = (
+    <>
+      <TextField
+        size="small"
+        type="date"
+        label="Dari"
+        value={dari}
+        onChange={(e) => {
+          setDari(e.target.value);
+          setPage(1);
+        }}
+        slotProps={{ inputLabel: { shrink: true } }}
+      />
+      <TextField
+        size="small"
+        type="date"
+        label="Sampai"
+        value={sampai}
+        onChange={(e) => {
+          setSampai(e.target.value);
+          setPage(1);
+        }}
+        slotProps={{ inputLabel: { shrink: true } }}
+      />
+    </>
+  );
 
   return (
     <Box sx={{ width: '100%' }}>
       <Typography variant="h5" component="h1" sx={{ mb: 2 }}>
-        Daftar kunjungan
+        Kunjungan
       </Typography>
 
       <Paper variant="outlined">
-        <Tabs
-          value={status}
-          onChange={(_, value) => {
-            setStatus(value);
-            setPage(1);
-          }}
-          variant="scrollable"
-          scrollButtons="auto"
-        >
-          {TABS.map((t) => (
-            <Tab
-              key={t.value}
-              value={t.value}
-              label={
-                t.value === 'menunggu' && waiting !== null ? `${t.label} ${waiting}` : t.label
-              }
-            />
-          ))}
-        </Tabs>
-        <Divider />
-
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ p: 2 }}>
           <TextField
             size="small"
-            placeholder="Cari nama atau NIK"
+            placeholder="Cari tahanan, pembesuk, atau NIK"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             sx={{ flex: 1 }}
@@ -161,36 +214,39 @@ export default function VisitList() {
               },
             }}
           />
-          <TextField
-            size="small"
-            type="date"
-            label="Dari"
-            value={dari}
-            onChange={(e) => {
-              setDari(e.target.value);
-              setPage(1);
-            }}
-            slotProps={{ inputLabel: { shrink: true } }}
-          />
-          <TextField
-            size="small"
-            type="date"
-            label="Sampai"
-            value={sampai}
-            onChange={(e) => {
-              setSampai(e.target.value);
-              setPage(1);
-            }}
-            slotProps={{ inputLabel: { shrink: true } }}
-          />
-          {hasFilter && (
-            <Button onClick={resetFilter} size="small">
-              Reset
-            </Button>
+
+          {isMobile ? (
+            <>
+              <Button
+                startIcon={<FilterListIcon />}
+                onClick={() => setShowFilter((v) => !v)}
+                variant="outlined"
+                sx={{ minHeight: 44 }}
+              >
+                Filter
+              </Button>
+              <Collapse in={showFilter}>
+                <Stack spacing={2}>
+                  {statusField}
+                  {dateFields}
+                  {hasFilter && <Button onClick={resetFilter}>Reset</Button>}
+                </Stack>
+              </Collapse>
+            </>
+          ) : (
+            <>
+              {statusField}
+              {dateFields}
+              {hasFilter && (
+                <Button onClick={resetFilter} size="small">
+                  Reset
+                </Button>
+              )}
+              <IconButton aria-label="Muat ulang" onClick={() => setTick((t) => t + 1)}>
+                <RefreshIcon />
+              </IconButton>
+            </>
           )}
-          <IconButton aria-label="Muat ulang" onClick={() => setTick((t) => t + 1)}>
-            <RefreshIcon />
-          </IconButton>
         </Stack>
 
         {result.error && (
@@ -208,45 +264,79 @@ export default function VisitList() {
         )}
 
         <Box sx={{ height: 4 }}>{loading && <LinearProgress />}</Box>
-        <TableContainer>
-          <Table size="medium">
-            <TableHead>
-              <TableRow>
-                <TableCell>No</TableCell>
-                <TableCell>Tanggal</TableCell>
-                <TableCell>Tahanan</TableCell>
-                <TableCell>Pembesuk</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {!loading && !result.error && result.rows.length === 0 && (
+
+        {isMobile ? (
+          <Stack divider={<Divider />}>
+            {!loading && !result.error && result.rows.length === 0 && (
+              <Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>
+                Tidak ada kunjungan.
+              </Typography>
+            )}
+            {result.rows.map((row) => (
+              <Box key={row.id} sx={{ p: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography sx={{ fontWeight: 700 }}>{row.noUrut}</Typography>
+                  <StatusChip status={row.status} />
+                </Box>
+                <Typography sx={{ mt: 0.5 }}>
+                  {row.tahanan}
+                  {row.tahananBelumVerifikasi && <UnverifiedBadge />}
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {row.jumlahPembesuk} pembesuk, {formatDate(row.tanggal)}
+                  </Typography>
+                  <Button size="small" onClick={() => navigate(detailPath(row.id))} sx={{ minHeight: 44 }}>
+                    Lihat
+                  </Button>
+                </Box>
+              </Box>
+            ))}
+          </Stack>
+        ) : (
+          <TableContainer>
+            <Table>
+              <TableHead>
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                    Tidak ada kunjungan.
-                  </TableCell>
+                  <TableCell>No</TableCell>
+                  <TableCell>Tanggal</TableCell>
+                  <TableCell>Tahanan</TableCell>
+                  <TableCell>Pembesuk</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Aksi</TableCell>
                 </TableRow>
-              )}
-              {result.rows.map((row) => (
-                <TableRow key={row.id} hover>
-                  <TableCell>{row.noUrut}</TableCell>
-                  <TableCell>{formatDate(row.tanggal)}</TableCell>
-                  <TableCell>{row.tahanan}</TableCell>
-                  <TableCell>{row.jumlahPembesuk} orang</TableCell>
-                  <TableCell>
-                    <StatusChip status={row.status} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button size="small" onClick={() => navigate(detailPath(row.id))}>
-                      Lihat
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {!loading && !result.error && result.rows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                      Tidak ada kunjungan.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {result.rows.map((row) => (
+                  <TableRow key={row.id} hover>
+                    <TableCell>{row.noUrut}</TableCell>
+                    <TableCell>{formatDate(row.tanggal)}</TableCell>
+                    <TableCell>
+                      {row.tahanan}
+                      {row.tahananBelumVerifikasi && <UnverifiedBadge />}
+                    </TableCell>
+                    <TableCell>{row.jumlahPembesuk} orang</TableCell>
+                    <TableCell>
+                      <StatusChip status={row.status} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Button size="small" onClick={() => navigate(detailPath(row.id))}>
+                        Lihat
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
 
         <Divider />
         <Stack
@@ -254,20 +344,22 @@ export default function VisitList() {
           sx={{ p: 1.5, alignItems: 'center', justifyContent: 'space-between' }}
         >
           <Typography variant="body2" sx={{ color: 'text.secondary', pl: 1 }}>
-            Halaman {page} dari {result.totalPages}
+            {result.total > 0
+              ? `Menampilkan ${from} sampai ${to} dari ${result.total}`
+              : 'Tidak ada data'}
           </Typography>
           <Stack direction="row" spacing={0.5}>
             <IconButton
               aria-label="Halaman sebelumnya"
               disabled={page <= 1 || loading}
-              onClick={() => setPage((p) => p - 1)}
+              onClick={() => setPage(page - 1)}
             >
               <ChevronLeftIcon />
             </IconButton>
             <IconButton
               aria-label="Halaman berikutnya"
               disabled={page >= result.totalPages || loading}
-              onClick={() => setPage((p) => p + 1)}
+              onClick={() => setPage(page + 1)}
             >
               <ChevronRightIcon />
             </IconButton>

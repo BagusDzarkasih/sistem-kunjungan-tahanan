@@ -37,6 +37,7 @@ function normalizeRow(k) {
       (typeof k.tahanan === 'string' ? k.tahanan : ''),
     jumlahPembesuk: k.jumlah_pembesuk ?? k.jumlahPembesuk ?? k.pembesuk?.length ?? 0,
     status: k.status ?? '',
+    tahananBelumVerifikasi: k.tahanan_status_verifikasi === 'belum',
   };
 }
 

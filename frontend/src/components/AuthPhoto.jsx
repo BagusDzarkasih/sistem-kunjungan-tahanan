@@ -5,9 +5,10 @@ import { useEffect, useState } from 'react';
 import { Box, Dialog, Skeleton, Typography } from '@mui/material';
 import { getPhotoBlob } from '../services/visit.service';
 
-export default function AuthPhoto({ type, id, alt }) {
+   // missingText: tulisan bila fotonya tidak ada di server (404).
+   export default function AuthPhoto({ type, id, alt, missingText = 'Foto tidak ditemukan' }) {
   const key = `${type}:${id}`;
-  const [photo, setPhoto] = useState({ key: '', url: '', failed: false });
+  const [photo, setPhoto] = useState({ key: '', url: '', failed: false, missing: false });
   const [zoom, setZoom] = useState(false);
 
   useEffect(() => {
@@ -18,11 +19,13 @@ export default function AuthPhoto({ type, id, alt }) {
       .then((blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
-        setPhoto({ key, url: objectUrl, failed: false });
+       setPhoto({ key, url: objectUrl, failed: false, missing: false });
       })
-      .catch(() => {
-        if (!cancelled) setPhoto({ key, url: '', failed: true });
-      });
+              .catch((err) => {
+           if (!cancelled) {
+             setPhoto({ key, url: '', failed: true, missing: err.response?.status === 404 });
+           }
+         });
 
     // Bersihkan URL sementara supaya memori tidak menumpuk.
     return () => {
@@ -56,7 +59,7 @@ export default function AuthPhoto({ type, id, alt }) {
           }}
         >
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Foto tidak tersedia
+            {photo.missing ? missingText : 'Foto gagal dimuat'}
           </Typography>
         </Box>
       )}

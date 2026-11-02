@@ -1,22 +1,24 @@
-// Tema tampilan MUI. Warna utama instansi: #0085de.
+// Tema tampilan MUI. Warna mengikuti wireframe: aksen #0085df, tombol #0069ae.
 // Ganti warna atau font cukup di file ini, semua halaman ikut berubah.
 import { createTheme } from '@mui/material/styles';
 
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#0085de',
-      dark: '#0067ad',
+      main: '#0069ae', // tombol (teks putih)
+      dark: '#00578f',
       light: '#e6f3fc',
       contrastText: '#ffffff',
     },
+    info: { main: '#0085df' }, // aksen, ikon, fokus
+    divider: '#c9d8e6',
     background: {
-      default: '#f4f7fa',
+      default: '#f2f7fb',
       paper: '#ffffff',
     },
     text: {
-      primary: '#16212c',
-      secondary: '#5b6b7a',
+      primary: '#0a2a43',
+      secondary: '#4f6579',
     },
   },
   shape: { borderRadius: 8 },
