@@ -16,6 +16,7 @@ import Login from './pages/Login';
 import NotFound from './pages/NotFound';
 import PrisonerDetail from './pages/PrisonerDetail';
 import Prisoners from './pages/Prisoners';
+import Reports from './pages/Reports';
 import VisitDetail from './pages/VisitDetail';
 import VisitList from './pages/VisitList';
 import VisitorDetail from './pages/VisitorDetail';
@@ -41,7 +42,7 @@ export default function App() {
           <Route path="prisoners/:id" element={<PrisonerDetail />} />
           <Route path="visitors" element={<Visitors />} />
           <Route path="visitors/:id" element={<VisitorDetail />} />
-          <Route path="reports" element={<ComingSoon title="Laporan bulanan" />} />
+          <Route path="reports" element={<Reports />} />
           <Route path="rules" element={<ComingSoon title="Peraturan Besuk" />} />
 
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
