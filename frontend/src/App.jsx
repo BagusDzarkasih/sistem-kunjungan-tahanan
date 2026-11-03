@@ -10,7 +10,6 @@
 //   /staff/users, /staff/settings   khusus admin (petugas melihat halaman 403)
 import { Navigate, Route, Routes } from 'react-router-dom';
 import StaffLayout from './components/StaffLayout';
-import ComingSoon from './pages/ComingSoon';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
@@ -18,6 +17,8 @@ import PrisonerDetail from './pages/PrisonerDetail';
 import Prisoners from './pages/Prisoners';
 import Reports from './pages/Reports';
 import Rules from './pages/Rules';
+import Settings from './pages/Settings';
+import Users from './pages/Users';
 import VisitDetail from './pages/VisitDetail';
 import VisitList from './pages/VisitList';
 import VisitorDetail from './pages/VisitorDetail';
@@ -47,8 +48,8 @@ export default function App() {
           <Route path="rules" element={<Rules />} />
 
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-            <Route path="users" element={<ComingSoon title="Pengguna" />} />
-            <Route path="settings" element={<ComingSoon title="Pengaturan" />} />
+            <Route path="users" element={<Users />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
 
           {/* Alamat salah di dalam panel */}
